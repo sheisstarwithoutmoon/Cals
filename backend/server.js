@@ -1,21 +1,48 @@
 const express = require("express");
 const cors = require("cors");
-require("dotenv").config();
+const cookieParser = require("cookie-parser");
+
+const { frontendUrl, port } = require("./src/config/env");
+const authRoutes = require("./src/routes/auth.routes");
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: frontendUrl,
+    credentials: true,
+  })
+);
+
 app.use(express.json());
+app.use(cookieParser());
 
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
-    message: "Calorie Tracker API is running",
+    message: "Cals API is running",
   });
 });
 
-const PORT = process.env.PORT || 5000;
+app.use("/api/auth", authRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.use((error, req, res, next) => {
+  console.error(error);
+
+  if (error.name === "ZodError") {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: error.issues,
+    });
+  }
+
+  res.status(error.statusCode || 500).json({
+    success: false,
+    message: error.message || "Internal server error",
+  });
+});
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
 });
