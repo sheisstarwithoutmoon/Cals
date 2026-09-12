@@ -1,24 +1,31 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { FlaskConicalIcon } from "lucide-react";
+import { LeafIcon } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
-import { NUTRIENT_DAILY_VALUES, VITAMIN_MINERAL_KEYS } from "@/lib/constants";
+import { NUTRIENT_DAILY_VALUES } from "@/lib/constants";
+import type { NutritionTotals } from "@/lib/nutrition";
 
-interface MicronutrientChartProps {
-  micronutrients: Record<string, number>;
+interface OtherNutrientsChartProps {
+  totals: NutritionTotals;
 }
 
-export function MicronutrientChart({ micronutrients }: MicronutrientChartProps) {
-  const data = VITAMIN_MINERAL_KEYS.map((key) => {
-    const value = micronutrients[key] ?? 0;
-    const dailyValue = NUTRIENT_DAILY_VALUES[key];
+const ROWS = [
+  { key: "fiber", label: "Fiber", unit: "g", dvKey: "Fiber (g)" },
+  { key: "sugar", label: "Sugar", unit: "g", dvKey: "Sugar (g)" },
+  { key: "sodium", label: "Sodium", unit: "mg", dvKey: "Sodium (mg)" },
+] as const;
+
+export function OtherNutrientsChart({ totals }: OtherNutrientsChartProps) {
+  const data = ROWS.map((row) => {
+    const value = totals[row.key];
+    const dailyValue = NUTRIENT_DAILY_VALUES[row.dvKey];
 
     return {
-      name: key.replace(/\s*\(.+\)/, ""),
-      unit: key.match(/\(([^)]+)\)/)?.[1] ?? "",
+      name: `${row.label} (${row.unit})`,
+      unit: row.unit,
       value: Math.round(value * 10) / 10,
       percent: Math.round((value / dailyValue) * 100),
     };
@@ -29,15 +36,15 @@ export function MicronutrientChart({ micronutrients }: MicronutrientChartProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Micronutrients</CardTitle>
+        <CardTitle>Other nutrients</CardTitle>
       </CardHeader>
       <CardContent className="px-2">
         {!hasData ? (
           <div className="flex h-64 items-center justify-center">
             <EmptyState
-              icon={FlaskConicalIcon}
-              title="No micronutrient data yet"
-              description="Log meals with vitamin and mineral values to see them here."
+              icon={LeafIcon}
+              title="No data yet"
+              description="Log fiber, sugar or sodium on your meals to see totals here."
             />
           </div>
         ) : (
@@ -75,7 +82,7 @@ export function MicronutrientChart({ micronutrients }: MicronutrientChartProps) 
                     ];
                   }}
                 />
-                <Bar dataKey="percent" fill="var(--chart-5)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="percent" fill="var(--chart-3)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
