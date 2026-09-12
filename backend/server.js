@@ -6,6 +6,7 @@ const { frontendUrl, port } = require("./src/config/env");
 const authRoutes = require("./src/routes/auth.routes");
 const goalRoutes = require("./src/routes/goal.routes");
 const mealRoutes = require("./src/routes/meal.routes");
+const aiRoutes = require("./src/routes/ai.routes");
 
 const app = express();
 
@@ -16,7 +17,8 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.use(cookieParser());
 
 app.get("/api/health", (req, res) => {
@@ -29,6 +31,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/meals", mealRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.use((error, req, res, next) => {
   console.error(error);

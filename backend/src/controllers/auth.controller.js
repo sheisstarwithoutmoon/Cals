@@ -114,34 +114,48 @@ function startGoogleAuth(req, res, next) {
   }
 }
 
+/**
+ * Express's query parser (`qs`) decodes query strings the same way it
+ * decodes `application/x-www-form-urlencoded` bodies, which treats a
+ * literal `+` as a space. Google's authorization codes are base64url-ish
+ * but occasionally contain `+`, so reading it from `req.query` can silently
+ * corrupt the code and turn a valid exchange into an "invalid_grant" error.
+ * Pulling it straight off the raw query string with `decodeURIComponent`
+ * (which never touches `+`) avoids that.
+ */
+function getRawQueryParam(req, key) {
+  const queryString = req.originalUrl.split("?")[1] || "";
+
+  for (const pair of queryString.split("&")) {
+    const [rawKey, rawValue = ""] = pair.split("=");
+    if (decodeURIComponent(rawKey) === key) {
+      return decodeURIComponent(rawValue);
+    }
+  }
+
+  return undefined;
+}
+
 async function googleCallback(req, res, next) {
   try {
-    const { code, state } = req.query;
+    const code = getRawQueryParam(req, "code");
+    const state = getRawQueryParam(req, "state");
     const savedState = req.cookies[GOOGLE_STATE_COOKIE];
 
     clearGoogleStateCookie(res);
 
     if (!state || !savedState || state !== savedState) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OAuth state",
-      });
+      return res.redirect(`${frontendUrl}/login?error=google_state_mismatch`);
     }
 
     if (!code) {
-      return res.status(400).json({
-        success: false,
-        message: "Google authorization code is missing",
-      });
+      return res.redirect(`${frontendUrl}/login?error=google_auth_missing_code`);
     }
 
     const { tokens } = await googleClient.getToken(code);
 
     if (!tokens.id_token) {
-      return res.status(401).json({
-        success: false,
-        message: "Google did not return a valid identity token",
-      });
+      return res.redirect(`${frontendUrl}/login?error=google_no_identity_token`);
     }
 
     const ticket = await googleClient.verifyIdToken({
@@ -152,10 +166,7 @@ async function googleCallback(req, res, next) {
     const payload = ticket.getPayload();
 
     if (!payload) {
-      return res.status(401).json({
-        success: false,
-        message: "Unable to verify Google account",
-      });
+      return res.redirect(`${frontendUrl}/login?error=google_verification_failed`);
     }
 
     const {
@@ -166,10 +177,7 @@ async function googleCallback(req, res, next) {
     } = payload;
 
     if (!googleId || !email || !emailVerified) {
-      return res.status(401).json({
-        success: false,
-        message: "Google account information could not be verified",
-      });
+      return res.redirect(`${frontendUrl}/login?error=google_account_unverified`);
     }
 
     const result = await loginOrCreateGoogleUser({
@@ -182,7 +190,11 @@ async function googleCallback(req, res, next) {
 
     res.redirect(frontendUrl);
   } catch (error) {
-    next(error);
+    console.error(
+      "Google OAuth callback failed:",
+      error.response?.data || error.message
+    );
+    res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
   }
 }
 

@@ -6,6 +6,7 @@ const {
   getOne,
   update,
   remove,
+  importPdf,
 } = require("../controllers/meal.controller");
 
 const { requireAuth } = require("../middleware/auth.middleware");
@@ -14,6 +15,7 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+router.post("/import-pdf", importPdf);
 router.post("/", create);
 router.get("/", list);
 router.get("/:id", getOne);
