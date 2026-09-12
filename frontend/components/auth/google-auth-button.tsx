@@ -27,7 +27,7 @@ export function GoogleAuthButton() {
   return (
     <a
       href={googleAuthUrl}
-      className="flex w-full items-center justify-center gap-2.5 rounded-full border border-stone-200 bg-white py-2.5 text-sm font-semibold text-stone-700 shadow-sm transition-colors hover:bg-stone-50"
+      className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full border border-stone-200 bg-white py-0 text-sm font-semibold text-stone-700 shadow-sm transition-colors hover:bg-stone-50"
     >
       <GoogleIcon />
       Continue with Google

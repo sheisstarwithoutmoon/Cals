@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import * as mealsApi from "@/lib/api/meals";
 import { ApiError } from "@/lib/api/client";
+import { onDataChanged } from "@/lib/events";
 import type {
   MealEntry,
   MealListFilters,
@@ -49,6 +50,8 @@ export function useMeals(filters: MealListFilters) {
   useEffect(() => {
     fetchMeals();
   }, [fetchMeals]);
+
+  useEffect(() => onDataChanged(fetchMeals), [fetchMeals]);
 
   const refetch = useCallback(() => setReloadToken((token) => token + 1), []);
 

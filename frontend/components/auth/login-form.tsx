@@ -41,8 +41,8 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
-      router.replace("/dashboard");
+      const loggedInUser = await login(email, password);
+      router.replace(loggedInUser.onboardingCompleted ? "/dashboard" : "/onboarding");
     } catch (error) {
       if (error instanceof ApiError) {
         setFormError(error.message);
@@ -133,7 +133,7 @@ export function LoginForm() {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="w-full cursor-pointer rounded-full bg-emerald-700 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 active:scale-98"
+          className="h-12 w-full cursor-pointer rounded-full bg-emerald-700 py-0 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 active:scale-98"
         >
           {isSubmitting && (
             <Loader2Icon className="size-4 animate-spin" />

@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Cals | Personal Calorie Tracker",
+    default: "Cals",
     template: "%s",
   },
   description:

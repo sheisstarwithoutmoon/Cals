@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOutIcon, BotIcon } from "lucide-react";
+import { LogOutIcon } from "lucide-react";
 
 import { BrandLogo } from "@/components/common/brand-logo";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
@@ -11,7 +10,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { AiChatDrawer } from "@/components/chat/ai-chat-drawer";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -26,11 +24,8 @@ export function AppSidebar() {
         .toUpperCase()
     : "?";
 
-  const [isChatOpen, setIsChatOpen] = useState(false);
-
   return (
-    <>
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-stone-200/80 bg-[#e7f3ec] lg:flex">
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-stone-200/80 bg-[#e7f3ec] lg:flex">
         <div className="flex h-18 items-center px-6 border-b border-stone-200/50">
           <BrandLogo size="md" brandName="Cals" href="/dashboard" />
         </div>
@@ -56,15 +51,6 @@ export function AppSidebar() {
               </Link>
             );
           })}
-
-          <button
-            type="button"
-            onClick={() => setIsChatOpen(true)}
-            className="mt-2 flex cursor-pointer items-center gap-3 rounded-xl border border-emerald-300/80 bg-emerald-100/60 px-3.5 py-2.5 text-sm font-semibold text-emerald-900 transition-all hover:bg-emerald-100"
-          >
-            <BotIcon className="size-4.5 text-emerald-800" />
-            <span>AI Assistant</span>
-          </button>
         </nav>
 
       <div className="flex items-center gap-3 border-t border-stone-200/70 bg-stone-50/50 px-4 py-4">
@@ -92,11 +78,5 @@ export function AppSidebar() {
         </Button>
       </div>
     </aside>
-
-    <AiChatDrawer
-      isOpen={isChatOpen}
-      onClose={() => setIsChatOpen(false)}
-    />
-  </>
   );
 }

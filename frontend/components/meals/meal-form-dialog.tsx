@@ -189,7 +189,7 @@ export function MealFormDialog({
         </DialogHeader>
 
         <form
-          className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
+          className="min-h-0 space-y-4 overflow-y-auto pr-1"
           onSubmit={handleSubmit}
           noValidate
         >

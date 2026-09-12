@@ -11,9 +11,9 @@ export function GuestShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && user) {
-      router.replace("/dashboard");
-    }
+    if (isLoading || !user) return;
+
+    router.replace(user.onboardingCompleted ? "/dashboard" : "/onboarding");
   }, [isLoading, user, router]);
 
   if (isLoading) {

@@ -1,6 +1,5 @@
 import {
   LayoutDashboard,
-  LineChart,
   Target,
   UtensilsCrossed,
   type LucideIcon,
@@ -16,5 +15,4 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/meals", label: "Meals", icon: UtensilsCrossed },
   { href: "/goals", label: "Goals", icon: Target },
-  { href: "/reports", label: "Reports", icon: LineChart },
 ];

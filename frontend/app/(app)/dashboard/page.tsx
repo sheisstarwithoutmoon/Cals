@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
+import { PlusIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { DashboardReports } from "@/components/dashboard/dashboard-reports";
 import { ErrorState } from "@/components/common/error-state";
 import { PageHeader } from "@/components/common/page-header";
 import { NutritionSummary } from "@/components/dashboard/nutrition-summary";
-import { QuickActions } from "@/components/dashboard/quick-actions";
 import { TodayMealsCard } from "@/components/dashboard/today-meals-card";
+import { MealFormDialog } from "@/components/meals/meal-form-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { useGoal } from "@/hooks/use-goal";
@@ -40,6 +43,17 @@ export default function DashboardPage() {
       <PageHeader
         title={firstName ? `Hi, ${firstName}` : "Dashboard"}
         description="Here's how today is going so far."
+        action={
+          <MealFormDialog
+            trigger={
+              <Button className="rounded-full bg-emerald-700 hover:bg-emerald-800 text-white">
+                <PlusIcon className="size-4" />
+                <span>Log meal</span>
+              </Button>
+            }
+            onSaved={refetchMeals}
+          />
+        }
       />
 
       {(goalError || mealsError) && (
@@ -55,7 +69,6 @@ export default function DashboardPage() {
       {isLoading ? (
         <div className="space-y-6">
           <Skeleton className="h-48 w-full rounded-xl" />
-          <Skeleton className="h-24 w-full rounded-xl" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
       ) : (
@@ -63,12 +76,12 @@ export default function DashboardPage() {
         !mealsError && (
           <>
             <NutritionSummary totals={totals} goal={goal} />
-            <QuickActions onMealSaved={refetchMeals} />
             <TodayMealsCard
               meals={meals}
               onUpdated={refetchMeals}
               onDeleted={refetchMeals}
             />
+            <DashboardReports goal={goal} />
           </>
         )
       )}

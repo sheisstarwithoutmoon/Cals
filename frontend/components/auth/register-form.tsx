@@ -41,7 +41,7 @@ export function RegisterForm() {
 
     try {
       await register(name, email, password);
-      router.replace("/dashboard");
+      router.replace("/onboarding");
     } catch (error) {
       if (error instanceof ApiError) {
         setFormError(error.message);
@@ -78,7 +78,7 @@ export function RegisterForm() {
 
           <Input
             id="name"
-            placeholder="Your name"
+            placeholder="Enter your name"
             autoComplete="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -182,7 +182,7 @@ export function RegisterForm() {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="w-full cursor-pointer rounded-full bg-emerald-700 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 active:scale-98"
+          className="h-12 w-full cursor-pointer rounded-full bg-emerald-700 py-0 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 active:scale-98"
         >
           {isSubmitting && (
             <Loader2Icon className="size-4 animate-spin" />
