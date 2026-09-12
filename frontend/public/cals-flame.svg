@@ -1,0 +1,56 @@
+<svg
+  width="48"
+  height="48"
+  viewBox="0 0 48 48"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <defs>
+    <linearGradient
+      id="inner-flame"
+      x1="18"
+      y1="20"
+      x2="31"
+      y2="38"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#B8F5A2" />
+      <stop offset="1" stop-color="#7FE36D" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer flame -->
+  <path
+    d="M24 3
+       C20 8 13 13 13 21
+       C13 17 10 19 8 23
+       C4 31 9 42 18 45
+       C21 46 27 46 30 45
+       C39 42 43 34 41 26
+       C40 21 37 17 34 14
+       C35 19 32 21 30 23
+       C31 17 28 9 24 3Z"
+    fill="#15803D"
+  />
+
+  <!-- Inner flame -->
+  <path
+    d="M24 18
+       C24 22 21 25 19 27
+       C16 30 16 34 18 37
+       C20 40 23 42 26 41
+       C30 40 32 37 32 33
+       C32 28 28 23 24 18Z"
+    fill="url(#inner-flame)"
+  />
+
+  <!-- Inner highlight -->
+  <path
+    d="M23 27
+       C21 30 19 32 20 35
+       C21 38 23 39 25 40
+       C27 38 28 36 28 34
+       C28 31 26 29 23 27Z"
+    fill="#D9FBCF"
+  />
+</svg>
