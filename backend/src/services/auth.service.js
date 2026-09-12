@@ -34,10 +34,7 @@ async function registerUser({ name, email, password }) {
 
   const token = generateToken(user.id);
 
-  return {
-    user,
-    token,
-  };
+  return { user, token };
 }
 
 async function loginUser({ email, password }) {
@@ -77,9 +74,7 @@ async function loginUser({ email, password }) {
 
 async function getUserById(userId) {
   return prisma.user.findUnique({
-    where: {
-      id: userId,
-    },
+    where: { id: userId },
     select: {
       id: true,
       name: true,
@@ -89,8 +84,56 @@ async function getUserById(userId) {
   });
 }
 
+async function loginOrCreateGoogleUser({
+  googleId,
+  email,
+  name,
+}) {
+  let user = await prisma.user.findUnique({
+    where: { googleId },
+  });
+
+  if (!user) {
+    user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId,
+        },
+      });
+    }
+  }
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        googleId,
+      },
+    });
+  }
+
+  const token = generateToken(user.id);
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+    token,
+  };
+}
+
 module.exports = {
   registerUser,
   loginUser,
   getUserById,
+  loginOrCreateGoogleUser,
 };
