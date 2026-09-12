@@ -83,12 +83,12 @@ export function GoalForm({ goal, onSave, onCancel }: GoalFormProps) {
   }
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle>Edit your goals</CardTitle>
       </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+      <CardContent className="flex-1">
+        <form className="space-y-5" onSubmit={handleSubmit} noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="dailyCalories">Daily calories (kcal)</Label>
             <Input

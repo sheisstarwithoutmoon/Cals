@@ -13,6 +13,8 @@ const mealSourceSchema = z.enum([
   "PDF_IMPORT",
 ]);
 
+const attachmentTypeSchema = z.enum(["IMAGE", "PDF"]);
+
 const mealSchema = z.object({
   mealType: mealTypeSchema,
 
@@ -70,6 +72,9 @@ const mealSchema = z.object({
   micronutrients: z
     .record(z.string(), z.number().nonnegative())
     .optional(),
+
+  attachmentUrl: z.string().trim().max(2000).optional(),
+  attachmentType: attachmentTypeSchema.optional(),
 
   consumedAt: z.coerce.date(),
 

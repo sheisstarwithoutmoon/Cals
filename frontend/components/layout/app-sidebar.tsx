@@ -27,7 +27,7 @@ export function AppSidebar() {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-stone-200/80 bg-[#e7f3ec] lg:flex">
         <div className="flex h-18 items-center px-6 border-b border-stone-200/50">
-          <BrandLogo size="md" brandName="Cals" href="/dashboard" />
+          <BrandLogo size="md" brandName="Cals" href="/" />
         </div>
 
         <nav className="flex flex-1 flex-col gap-1.5 px-4 py-4">

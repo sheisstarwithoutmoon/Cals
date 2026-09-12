@@ -5,11 +5,13 @@ import { CameraIcon, ChevronRightIcon, FileTextIcon, XIcon } from "lucide-react"
 
 import { AiImageModal } from "@/components/meals/ai-image-modal";
 import { PdfImportModal } from "@/components/meals/pdf-import-modal";
+import type { ExtractedNutrition } from "@/lib/api/ai";
 
 interface ImportMealModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImported: () => void;
+  onPrefillManualForm?: (data: ExtractedNutrition) => void;
 }
 
 type Mode = "choose" | "photo" | "pdf";
@@ -18,6 +20,7 @@ export function ImportMealModal({
   isOpen,
   onClose,
   onImported,
+  onPrefillManualForm,
 }: ImportMealModalProps) {
   const [mode, setMode] = useState<Mode>("choose");
 
@@ -37,6 +40,14 @@ export function ImportMealModal({
           onImported();
           handleClose();
         }}
+        onPrefillManualForm={
+          onPrefillManualForm
+            ? (data) => {
+                onPrefillManualForm(data);
+                handleClose();
+              }
+            : undefined
+        }
       />
     );
   }
@@ -70,8 +81,7 @@ export function ImportMealModal({
           Import a meal
         </h2>
         <p className="mt-1 text-sm text-stone-500">
-          Snap a photo of your food or a nutrition label, or upload a PDF —
-          we'll extract the details automatically.
+          Snap a photo of your food or a nutrition label, or upload a PDF: we'll extract the details automatically.
         </p>
 
         <div className="mt-5 space-y-2.5">

@@ -106,7 +106,7 @@ async function remove(req, res, next) {
   }
 }
 
-const { importMealsFromPdf } = require("../services/pdf.service");
+const { importMealsFromPdf } = require("../services/ai.service");
 
 async function importPdf(req, res, next) {
   try {
@@ -119,15 +119,14 @@ async function importPdf(req, res, next) {
       });
     }
 
-    const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, "");
-    const buffer = Buffer.from(cleanBase64, "base64");
-
-    const result = await importMealsFromPdf(req.user.id, buffer);
+    const result = await importMealsFromPdf({ userId: req.user.id, pdfBase64 });
 
     res.status(201).json({
       success: true,
-      message: `Successfully imported ${result.count} meal entries`,
-      ...result,
+      message: `Successfully imported ${result.importedCount} meal entries`,
+      count: result.importedCount,
+      skippedCount: result.skippedCount,
+      sampleEntries: result.sampleEntries,
     });
   } catch (error) {
     next(error);

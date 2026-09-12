@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent, type ReactElement } from "react";
-import { Loader2Icon } from "lucide-react";
+import { FileTextIcon, Loader2Icon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { extractNutrition, type ExtractedNutrition } from "@/lib/api/ai";
 import { ApiError } from "@/lib/api/client";
 import * as mealsApi from "@/lib/api/meals";
 import { MEAL_TYPE_LABELS, MEAL_TYPES } from "@/lib/constants";
 import { toDateInputValue } from "@/lib/format";
-import type { MealEntry, MealInput, MealType } from "@/lib/types/api";
+import type { AttachmentType, MealEntry, MealInput, MealType } from "@/lib/types/api";
 
 interface MealFormDialogProps {
   meal?: MealEntry;
+  /** Pre-fills a NEW meal (e.g. from AI photo analysis) instead of editing an existing one. */
+  prefillData?: ExtractedNutrition | null;
   trigger?: ReactElement;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -49,13 +52,34 @@ interface FormState {
   fiber: string;
   sugar: string;
   sodium: string;
+  vitaminA: string;
+  vitaminC: string;
+  calcium: string;
+  iron: string;
+  potassium: string;
   consumedAt: string;
+  attachmentUrl: string;
+  attachmentType: AttachmentType | "";
 }
+
+const MICRO_FIELD_KEYS: Record<
+  "vitaminA" | "vitaminC" | "calcium" | "iron" | "potassium",
+  string
+> = {
+  vitaminA: "Vitamin A (mcg)",
+  vitaminC: "Vitamin C (mg)",
+  calcium: "Calcium (mg)",
+  iron: "Iron (mg)",
+  potassium: "Potassium (mg)",
+};
 
 function buildInitialState(
   meal: MealEntry | undefined,
-  defaultConsumedAt?: Date
+  defaultConsumedAt?: Date,
+  prefillData?: ExtractedNutrition | null
 ): FormState {
+  const micro = meal?.micronutrients ?? prefillData?.micronutrients ?? {};
+
   if (meal) {
     return {
       mealType: meal.mealType,
@@ -69,7 +93,38 @@ function buildInitialState(
       fiber: meal.fiber?.toString() ?? "",
       sugar: meal.sugar?.toString() ?? "",
       sodium: meal.sodium?.toString() ?? "",
+      vitaminA: micro["Vitamin A (mcg)"]?.toString() ?? "",
+      vitaminC: micro["Vitamin C (mg)"]?.toString() ?? "",
+      calcium: micro["Calcium (mg)"]?.toString() ?? "",
+      iron: micro["Iron (mg)"]?.toString() ?? "",
+      potassium: micro["Potassium (mg)"]?.toString() ?? "",
       consumedAt: toDateInputValue(meal.consumedAt),
+      attachmentUrl: meal.attachmentUrl ?? "",
+      attachmentType: meal.attachmentType ?? "",
+    };
+  }
+
+  if (prefillData) {
+    return {
+      mealType: prefillData.mealType ?? "BREAKFAST",
+      foodName: prefillData.foodName ?? "",
+      quantity: prefillData.quantity != null ? String(prefillData.quantity) : "",
+      quantityUnit: prefillData.quantityUnit ?? "",
+      calories: prefillData.calories != null ? String(prefillData.calories) : "",
+      protein: prefillData.protein != null ? String(prefillData.protein) : "",
+      carbs: prefillData.carbs != null ? String(prefillData.carbs) : "",
+      fat: prefillData.fat != null ? String(prefillData.fat) : "",
+      fiber: prefillData.fiber != null ? String(prefillData.fiber) : "",
+      sugar: prefillData.sugar != null ? String(prefillData.sugar) : "",
+      sodium: prefillData.sodium != null ? String(prefillData.sodium) : "",
+      vitaminA: micro["Vitamin A (mcg)"]?.toString() ?? "",
+      vitaminC: micro["Vitamin C (mg)"]?.toString() ?? "",
+      calcium: micro["Calcium (mg)"]?.toString() ?? "",
+      iron: micro["Iron (mg)"]?.toString() ?? "",
+      potassium: micro["Potassium (mg)"]?.toString() ?? "",
+      consumedAt: toDateInputValue(defaultConsumedAt ?? new Date()),
+      attachmentUrl: prefillData.attachmentUrl ?? "",
+      attachmentType: prefillData.attachmentType ?? "",
     };
   }
 
@@ -85,7 +140,14 @@ function buildInitialState(
     fiber: "",
     sugar: "",
     sodium: "",
+    vitaminA: "",
+    vitaminC: "",
+    calcium: "",
+    iron: "",
+    potassium: "",
     consumedAt: toDateInputValue(defaultConsumedAt ?? new Date()),
+    attachmentUrl: "",
+    attachmentType: "",
   };
 }
 
@@ -97,6 +159,7 @@ function toOptionalNumber(value: string) {
 
 export function MealFormDialog({
   meal,
+  prefillData,
   trigger,
   open,
   onOpenChange,
@@ -109,20 +172,21 @@ export function MealFormDialog({
   const isOpen = isControlled ? open : internalOpen;
 
   const [form, setForm] = useState<FormState>(() =>
-    buildInitialState(meal, defaultConsumedAt)
+    buildInitialState(meal, defaultConsumedAt, prefillData)
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEstimating, setIsEstimating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isOpen) {
-      setForm(buildInitialState(meal, defaultConsumedAt));
+      setForm(buildInitialState(meal, defaultConsumedAt, prefillData));
       setFormError(null);
       setFieldErrors({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, meal?.id]);
+  }, [isOpen, meal?.id, prefillData]);
 
   function setOpen(value: boolean) {
     if (!isControlled) setInternalOpen(value);
@@ -133,10 +197,62 @@ export function MealFormDialog({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function handleEstimateWithAi() {
+    if (!form.foodName.trim()) {
+      setFormError("Enter a food name or list of items first, then estimate with AI.");
+      return;
+    }
+
+    setFormError(null);
+    setIsEstimating(true);
+
+    try {
+      const res = await extractNutrition({ description: form.foodName.trim() });
+      const data = res.data;
+      const micro = data.micronutrients ?? {};
+
+      setForm((prev) => ({
+        ...prev,
+        mealType: data.mealType ?? prev.mealType,
+        quantity: data.quantity != null ? String(data.quantity) : prev.quantity,
+        quantityUnit: data.quantityUnit ?? prev.quantityUnit,
+        calories: String(data.calories ?? prev.calories),
+        protein: data.protein != null ? String(data.protein) : prev.protein,
+        carbs: data.carbs != null ? String(data.carbs) : prev.carbs,
+        fat: data.fat != null ? String(data.fat) : prev.fat,
+        fiber: data.fiber != null ? String(data.fiber) : prev.fiber,
+        sugar: data.sugar != null ? String(data.sugar) : prev.sugar,
+        sodium: data.sodium != null ? String(data.sodium) : prev.sodium,
+        vitaminA: micro["Vitamin A (mcg)"]?.toString() ?? prev.vitaminA,
+        vitaminC: micro["Vitamin C (mg)"]?.toString() ?? prev.vitaminC,
+        calcium: micro["Calcium (mg)"]?.toString() ?? prev.calcium,
+        iron: micro["Iron (mg)"]?.toString() ?? prev.iron,
+        potassium: micro["Potassium (mg)"]?.toString() ?? prev.potassium,
+      }));
+
+      toast.success("Filled in nutrition with AI — review before saving.");
+    } catch (error) {
+      setFormError(
+        error instanceof ApiError ? error.message : "Couldn't estimate nutrition. Please try again."
+      );
+    } finally {
+      setIsEstimating(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
     setFieldErrors({});
+
+    const micronutrients: Record<string, number> = {};
+    for (const [key, label] of Object.entries(MICRO_FIELD_KEYS) as [
+      keyof typeof MICRO_FIELD_KEYS,
+      string,
+    ][]) {
+      const value = toOptionalNumber(form[key]);
+      if (value != null) micronutrients[label] = value;
+    }
 
     const payload: MealInput = {
       mealType: form.mealType,
@@ -150,6 +266,9 @@ export function MealFormDialog({
       fiber: toOptionalNumber(form.fiber),
       sugar: toOptionalNumber(form.sugar),
       sodium: toOptionalNumber(form.sodium),
+      micronutrients: Object.keys(micronutrients).length ? micronutrients : undefined,
+      attachmentUrl: form.attachmentUrl || undefined,
+      attachmentType: form.attachmentType || undefined,
       consumedAt: new Date(form.consumedAt).toISOString(),
     };
 
@@ -178,9 +297,11 @@ export function MealFormDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setOpen}>
       {trigger && <DialogTrigger render={trigger} />}
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit meal" : "Log a meal"}</DialogTitle>
+      <DialogContent className="max-h-[calc(100vh-3rem)] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-lg">
+        <DialogHeader className="gap-1.5 border-b border-border/70 px-6 py-5">
+          <DialogTitle className="text-lg">
+            {isEditing ? "Edit meal" : "Log a meal"}
+          </DialogTitle>
           <DialogDescription>
             {isEditing
               ? "Update the details for this meal entry."
@@ -189,11 +310,42 @@ export function MealFormDialog({
         </DialogHeader>
 
         <form
-          className="min-h-0 space-y-4 overflow-y-auto pr-1"
+          id="meal-form"
+          className="min-h-0 space-y-6 overflow-y-auto px-6 py-5"
           onSubmit={handleSubmit}
           noValidate
         >
-          <div className="grid grid-cols-2 gap-3">
+          {form.attachmentUrl && (
+            <a
+              href={form.attachmentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 transition-colors hover:bg-emerald-50"
+            >
+              {form.attachmentType === "IMAGE" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.attachmentUrl}
+                  alt="Attached meal photo"
+                  className="size-12 shrink-0 rounded-lg object-cover"
+                />
+              ) : (
+                <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-700">
+                  <FileTextIcon className="size-5" />
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-emerald-900">
+                  {form.attachmentType === "IMAGE" ? "Original photo" : "Original PDF"}
+                </p>
+                <p className="text-[11px] text-emerald-700">
+                  This entry was created from an upload — tap to view it
+                </p>
+              </div>
+            </a>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="mealType">Meal type</Label>
               <Select
@@ -239,6 +391,10 @@ export function MealFormDialog({
               placeholder="Grilled chicken salad"
               required
             />
+            <p className="text-xs text-muted-foreground">
+              Logging more than one item? Separate them with commas, e.g. &ldquo;2
+              eggs, toast, coffee&rdquo; this is logged as one combined entry.
+            </p>
             {fieldErrors.foodName && (
               <p className="text-xs text-destructive">
                 {fieldErrors.foodName}
@@ -246,7 +402,26 @@ export function MealFormDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleEstimateWithAi}
+            disabled={isEstimating || !form.foodName.trim()}
+            className="w-full rounded-full border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+          >
+            {isEstimating ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <SparklesIcon className="size-4" />
+            )}
+            <span>
+              {isEstimating
+                ? "Estimating nutrition..."
+                : "Don't know the calories? Estimate with AI"}
+            </span>
+          </Button>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="quantity">Quantity</Label>
               <Input
@@ -292,7 +467,7 @@ export function MealFormDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="protein">Protein (g)</Label>
               <Input
@@ -330,7 +505,7 @@ export function MealFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="fiber">Fiber (g)</Label>
               <Input
@@ -368,70 +543,84 @@ export function MealFormDialog({
             </div>
           </div>
 
-          {/* Micronutrients collapsible section */}
-          <div className="rounded-xl border border-stone-200/80 bg-stone-50/50 p-3 space-y-2.5">
+          <div className="space-y-3 rounded-xl border border-stone-200/80 bg-stone-50/50 p-4">
             <p className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-              Micronutrients (Optional)
+              Micronutrients (optional)
             </p>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              <div>
-                <Label htmlFor="vitA" className="text-[10px] text-stone-600">Vit A (mcg)</Label>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label htmlFor="vitaminA" className="text-[11px] text-stone-600">
+                  Vit A (mcg)
+                </Label>
                 <Input
-                  id="vitA"
+                  id="vitaminA"
                   type="number"
                   min={0}
                   step="any"
                   placeholder="0"
-                  className="h-8 text-xs"
-                  defaultValue={meal?.micronutrients?.["Vitamin A (mcg)"]?.toString() ?? ""}
+                  className="h-9 text-xs"
+                  value={form.vitaminA}
+                  onChange={(event) => updateField("vitaminA", event.target.value)}
                 />
               </div>
-              <div>
-                <Label htmlFor="vitC" className="text-[10px] text-stone-600">Vit C (mg)</Label>
+              <div className="space-y-1">
+                <Label htmlFor="vitaminC" className="text-[11px] text-stone-600">
+                  Vit C (mg)
+                </Label>
                 <Input
-                  id="vitC"
+                  id="vitaminC"
                   type="number"
                   min={0}
                   step="any"
                   placeholder="0"
-                  className="h-8 text-xs"
-                  defaultValue={meal?.micronutrients?.["Vitamin C (mg)"]?.toString() ?? ""}
+                  className="h-9 text-xs"
+                  value={form.vitaminC}
+                  onChange={(event) => updateField("vitaminC", event.target.value)}
                 />
               </div>
-              <div>
-                <Label htmlFor="calcium" className="text-[10px] text-stone-600">Calcium (mg)</Label>
+              <div className="space-y-1">
+                <Label htmlFor="calcium" className="text-[11px] text-stone-600">
+                  Calcium (mg)
+                </Label>
                 <Input
                   id="calcium"
                   type="number"
                   min={0}
                   step="any"
                   placeholder="0"
-                  className="h-8 text-xs"
-                  defaultValue={meal?.micronutrients?.["Calcium (mg)"]?.toString() ?? ""}
+                  className="h-9 text-xs"
+                  value={form.calcium}
+                  onChange={(event) => updateField("calcium", event.target.value)}
                 />
               </div>
-              <div>
-                <Label htmlFor="iron" className="text-[10px] text-stone-600">Iron (mg)</Label>
+              <div className="space-y-1">
+                <Label htmlFor="iron" className="text-[11px] text-stone-600">
+                  Iron (mg)
+                </Label>
                 <Input
                   id="iron"
                   type="number"
                   min={0}
                   step="any"
                   placeholder="0"
-                  className="h-8 text-xs"
-                  defaultValue={meal?.micronutrients?.["Iron (mg)"]?.toString() ?? ""}
+                  className="h-9 text-xs"
+                  value={form.iron}
+                  onChange={(event) => updateField("iron", event.target.value)}
                 />
               </div>
-              <div>
-                <Label htmlFor="potassium" className="text-[10px] text-stone-600">Potassium (mg)</Label>
+              <div className="space-y-1">
+                <Label htmlFor="potassium" className="text-[11px] text-stone-600">
+                  Potassium (mg)
+                </Label>
                 <Input
                   id="potassium"
                   type="number"
                   min={0}
                   step="any"
                   placeholder="0"
-                  className="h-8 text-xs"
-                  defaultValue={meal?.micronutrients?.["Potassium (mg)"]?.toString() ?? ""}
+                  className="h-9 text-xs"
+                  value={form.potassium}
+                  onChange={(event) => updateField("potassium", event.target.value)}
                 />
               </div>
             </div>
@@ -442,21 +631,17 @@ export function MealFormDialog({
               {formError}
             </p>
           )}
-
-          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2Icon className="animate-spin" />}
-              {isEditing ? "Save changes" : "Log meal"}
-            </Button>
-          </div>
         </form>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-border/70 bg-muted/30 px-6 py-4 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" form="meal-form" disabled={isSubmitting}>
+            {isSubmitting && <Loader2Icon className="animate-spin" />}
+            {isEditing ? "Save changes" : "Log meal"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

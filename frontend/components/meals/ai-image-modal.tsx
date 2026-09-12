@@ -97,6 +97,8 @@ export function AiImageModal({
         sugar: extracted.sugar || 0,
         sodium: extracted.sodium || 0,
         micronutrients: extracted.micronutrients || {},
+        attachmentUrl: extracted.attachmentUrl,
+        attachmentType: extracted.attachmentType,
         consumedAt: new Date().toISOString(),
         source: "AI",
       });

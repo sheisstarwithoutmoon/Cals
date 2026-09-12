@@ -31,76 +31,78 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
     value.mealType !== "ALL" || value.startDate || value.endDate;
 
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-[minmax(180px,1.1fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto]">
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-type" className="text-xs text-muted-foreground">
-          Meal type
-        </Label>
-        <Select
-          value={value.mealType}
-          onValueChange={(mealType) =>
-            onChange({ ...value, mealType: mealType as MealType | "ALL" })
-          }
-        >
-          <SelectTrigger id="filter-type" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All meals</SelectItem>
-            {MEAL_TYPES.map((type) => (
-              <SelectItem key={type} value={type}>
-                {MEAL_TYPE_LABELS[type]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="filter-type" className="text-xs text-muted-foreground">
+            Meal type
+          </Label>
+          <Select
+            value={value.mealType}
+            onValueChange={(mealType) =>
+              onChange({ ...value, mealType: mealType as MealType | "ALL" })
+            }
+          >
+            <SelectTrigger id="filter-type" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All meals</SelectItem>
+              {MEAL_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {MEAL_TYPE_LABELS[type]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="filter-start" className="text-xs text-muted-foreground">
+            From
+          </Label>
+          <Input
+            id="filter-start"
+            type="date"
+            className="w-full"
+            value={value.startDate}
+            onChange={(event) =>
+              onChange({ ...value, startDate: event.target.value })
+            }
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="filter-end" className="text-xs text-muted-foreground">
+            To
+          </Label>
+          <Input
+            id="filter-end"
+            type="date"
+            className="w-full"
+            value={value.endDate}
+            onChange={(event) =>
+              onChange({ ...value, endDate: event.target.value })
+            }
+          />
+        </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-start" className="text-xs text-muted-foreground">
-          From
-        </Label>
-        <Input
-          id="filter-start"
-          type="date"
-          className="w-full"
-          value={value.startDate}
-          onChange={(event) =>
-            onChange({ ...value, startDate: event.target.value })
-          }
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-end" className="text-xs text-muted-foreground">
-          To
-        </Label>
-        <Input
-          id="filter-end"
-          type="date"
-          className="w-full"
-          value={value.endDate}
-          onChange={(event) =>
-            onChange({ ...value, endDate: event.target.value })
-          }
-        />
-      </div>
-
-      <div className="flex items-end justify-start sm:justify-end">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!hasActiveFilters}
-          aria-hidden={!hasActiveFilters}
-          className={`w-full text-rose-600 hover:bg-rose-50 hover:text-rose-700 sm:w-auto ${
-            hasActiveFilters ? "" : "invisible"
-          }`}
-          onClick={() => onChange({ mealType: "ALL", startDate: "", endDate: "" })}
-        >
-          <XIcon />
-          Clear
-        </Button>
-      </div>
+      {hasActiveFilters && (
+        <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-3">
+          <p className="text-xs text-muted-foreground">Filters applied</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-full border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+            onClick={() => onChange({ mealType: "ALL", startDate: "", endDate: "" })}
+          >
+            <XIcon />
+            Clear filters
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
