@@ -1,10 +1,28 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 const prisma = require("../config/prisma");
 const { getMeals } = require("./meal.service");
 const { getGoalByUserId, createOrUpdateGoal } = require("./goal.service");
+const { loadPrompt } = require("../utils/load-prompt");
+
+const imageNutritionPrompt = loadPrompt("image-nutrition.prompt.md");
+const mealExtractionPrompt = loadPrompt("meal-extraction.prompt.md");
+const nutritionQuestionPrompt = loadPrompt(
+  "nutrition-question-answering.prompt.md"
+);
 
 const apiKey = process.env.GEMINI_API_KEY;
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const genAI = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+// Centralized model names so a future model swap only happens in one place.
+const VISION_MODEL = "gemini-3.5-flash-lite";
+const MEAL_EXTRACTION_MODEL = "gemini-3.5-flash-lite";
+const QUESTION_ANSWERING_MODEL = "gemini-3.5-flash-lite";
+const PDF_IMPORT_MODEL = "gemini-3.5-flash-lite";
+
+// Gemini's inline-data limit is ~20MB per request. Bigger PDFs need the
+// Files API (upload once, reference by URI) instead of base64 in the body.
+const MAX_INLINE_PDF_BYTES = 20 * 1024 * 1024;
+const VALID_MEAL_TYPES = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 
 /**
  * Parses JSON safely from LLM text responses that might contain markdown fences.
@@ -23,13 +41,13 @@ function cleanJson(text) {
  */
 function fallbackNutritionEstimate(queryOrName = "Food item") {
   const q = (queryOrName || "").toLowerCase();
-  
+
   let calories = 350;
   let protein = 18;
   let carbs = 40;
   let fat = 12;
   let mealType = "LUNCH";
-  let foodName = queryOrName || "Mixed Meal";
+  const foodName = queryOrName || "Mixed Meal";
 
   if (q.includes("egg") || q.includes("oat") || q.includes("pancake") || q.includes("toast") || q.includes("breakfast")) {
     mealType = "BREAKFAST";
@@ -124,6 +142,130 @@ function parseGoalUpdate(message) {
 }
 
 /**
+ * Calls the Gemini API via the new @google/genai SDK and returns the raw
+ * text response. Centralized here so both the vision call and the two text
+ * calls below share one request shape instead of three slightly different
+ * ones (the old file called `model.generateContent` three separate ways).
+ */
+async function generateWithGemini({ model, promptText, filePart }) {
+  const contents = filePart
+    ? [{ text: promptText }, filePart]
+    : promptText;
+
+  const result = await genAI.models.generateContent({
+    model,
+    contents,
+  });
+
+  return result.text;
+}
+
+/**
+ * Coerces and validates one raw meal-entry object (from image analysis, PDF
+ * import, or manual data) into the shape mealEntry.create/createMany expects.
+ * Returns null if the entry is missing a usable calorie count, so a bulk
+ * import can skip bad rows instead of failing the whole batch.
+ */
+function normalizeMealEntry(raw, userId) {
+  if (!raw || typeof raw.calories !== "number") return null;
+
+  const consumedAt = raw.date ? new Date(raw.date) : new Date();
+  if (Number.isNaN(consumedAt.getTime())) return null;
+
+  return {
+    userId,
+    mealType: VALID_MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "LUNCH",
+    foodName: raw.foodName || "Imported Meal",
+    quantity: Number(raw.quantity) || 1,
+    quantityUnit: raw.quantityUnit || "serving",
+    calories: Math.max(0, Math.round(raw.calories)),
+    protein: Math.max(0, Math.round((raw.protein || 0) * 10) / 10),
+    carbs: Math.max(0, Math.round((raw.carbs || 0) * 10) / 10),
+    fat: Math.max(0, Math.round((raw.fat || 0) * 10) / 10),
+    fiber: Math.max(0, Math.round((raw.fiber || 0) * 10) / 10),
+    sugar: Math.max(0, Math.round((raw.sugar || 0) * 10) / 10),
+    sodium: Math.max(0, Math.round((raw.sodium || 0) * 10) / 10),
+    micronutrients: raw.micronutrients || {},
+    consumedAt,
+    source: "PDF_IMPORT",
+  };
+}
+
+/**
+ * Parses a food-diary/nutrition-history PDF (tabular export) and bulk-
+ * imports every recognizable row as a meal entry. Rows the model can't
+ * confidently extract a calorie value for are skipped and reported back,
+ * rather than failing the entire import.
+ */
+async function importMealsFromPdf({ userId, pdfBase64 }) {
+  if (!pdfBase64) {
+    throw new Error("PDF data is required");
+  }
+
+  const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, "");
+  const approxBytes = Math.floor((base64Data.length * 3) / 4);
+
+  if (approxBytes > MAX_INLINE_PDF_BYTES) {
+    throw new Error(
+      "PDF is too large for inline import (>20MB). Split the export into smaller date ranges, or use the Gemini Files API for large uploads."
+    );
+  }
+
+  if (!genAI) {
+    throw new Error("PDF import requires the Gemini API to be configured (GEMINI_API_KEY missing).");
+  }
+
+  const filePart = {
+    inlineData: {
+      data: base64Data,
+      mimeType: "application/pdf",
+    },
+  };
+
+  const responseText = await generateWithGemini({
+    model: PDF_IMPORT_MODEL,
+    promptText: mealExtractionPrompt.replace(
+      "{{message}}",
+      "Extract every food/meal row from the attached PDF as a JSON array. " +
+        "Each item must include foodName, mealType (BREAKFAST/LUNCH/DINNER/SNACK), " +
+        "quantity, quantityUnit, date (ISO 8601 if present in the PDF), calories, " +
+        "protein, carbs, fat, fiber, sugar, sodium. Return ONLY a JSON array, no prose."
+    ),
+    filePart,
+  });
+
+  const parsed = cleanJson(responseText);
+  const rawEntries = Array.isArray(parsed) ? parsed : [];
+
+  if (!rawEntries.length) {
+    throw new Error("Could not find any recognizable meal entries in the PDF.");
+  }
+
+  const normalizedEntries = rawEntries
+    .map((entry) => normalizeMealEntry(entry, userId))
+    .filter(Boolean);
+
+  const skippedCount = rawEntries.length - normalizedEntries.length;
+
+  if (!normalizedEntries.length) {
+    throw new Error("Found rows in the PDF, but none had a usable calorie value.");
+  }
+
+  const created = await prisma.mealEntry.createMany({
+    data: normalizedEntries,
+  });
+
+  return {
+    action: "PDF_IMPORTED",
+    importedCount: created.count,
+    skippedCount,
+    reply: `Imported ${created.count} meal entries from the PDF${
+      skippedCount ? ` (${skippedCount} rows skipped — missing or unrecognizable data)` : ""
+    }.`,
+  };
+}
+
+/**
  * Analyzes an image (plate of food or nutrition label) and extracts structured nutrition information.
  */
 async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
@@ -136,32 +278,6 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
 
   if (genAI) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = `Analyze this image (which could be a plate of food, a meal, or a packaged nutrition facts label).
-Extract or accurately estimate the nutritional information.
-Return ONLY a valid JSON object strictly matching this schema with no extra text:
-{
-  "foodName": "string",
-  "mealType": "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK",
-  "quantity": number,
-  "quantityUnit": "string",
-  "calories": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "fiber": number,
-  "sugar": number,
-  "sodium": number,
-  "micronutrients": {
-    "Vitamin A (mcg)": number,
-    "Vitamin C (mg)": number,
-    "Calcium (mg)": number,
-    "Iron (mg)": number,
-    "Potassium (mg)": number
-  },
-  "confidence": number
-}`;
-
       const imagePart = {
         inlineData: {
           data: base64Data,
@@ -169,9 +285,19 @@ Return ONLY a valid JSON object strictly matching this schema with no extra text
         },
       };
 
-      const result = await model.generateContent([prompt, imagePart]);
-      const responseText = result.response.text();
+      const responseText = await generateWithGemini({
+        model: VISION_MODEL,
+        promptText: imageNutritionPrompt,
+        filePart: imagePart,
+      });
       const parsed = cleanJson(responseText);
+
+      if (!parsed || typeof parsed.calories !== "number") {
+        console.warn(
+          "Gemini vision response didn't match the expected schema, falling back to smart extractor. Raw response:",
+          responseText
+        );
+      }
 
       if (parsed && typeof parsed.calories === "number") {
         return {
@@ -246,30 +372,23 @@ async function chatWithAssistant({ userId, message, history = [] }) {
 
     if (genAI) {
       try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const parsePrompt = `Extract nutrition and food details from this user query: "${trimmed}".
-Return strictly a JSON object:
-{
-  "foodName": "concise name of food",
-  "mealType": "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK",
-  "quantity": number,
-  "quantityUnit": "serving" | "grams" | "pieces" | "bowls",
-  "calories": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "fiber": number,
-  "sugar": number,
-  "sodium": number
-}`;
-        const parseRes = await model.generateContent(parsePrompt);
-        const parsedData = cleanJson(parseRes.response.text());
+        const parsePrompt = mealExtractionPrompt.replace("{{message}}", trimmed);
+        const responseText = await generateWithGemini({
+          model: MEAL_EXTRACTION_MODEL,
+          promptText: parsePrompt,
+        });
+        const parsedData = cleanJson(responseText);
         if (parsedData && parsedData.calories) {
           mealDetails = {
             ...mealDetails,
             ...parsedData,
             mealType: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"].includes(parsedData.mealType) ? parsedData.mealType : mealDetails.mealType,
           };
+        } else {
+          console.warn(
+            "Gemini meal-extraction response didn't match the expected schema, using fallback estimate. Raw response:",
+            responseText
+          );
         }
       } catch (err) {
         console.warn("AI parser error, used fallback:", err.message);
@@ -371,20 +490,23 @@ Return strictly a JSON object:
   // General Q&A / Nutritional advice with context
   if (genAI) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = `You are Cals AI, an expert, encouraging, and concise nutrition assistant.
-User Daily Goal: ${dailyCalorieGoal} kcal
-Today's Consumption: ${todayCalories} kcal (${todayProtein}g P, ${todayCarbs}g C, ${todayFat}g F)
-Remaining Today: ${remainingCalories} kcal
+      const prompt = nutritionQuestionPrompt
+        .replace("{{dailyCalorieGoal}}", String(dailyCalorieGoal))
+        .replace("{{todayCalories}}", String(todayCalories))
+        .replace("{{todayProtein}}", String(todayProtein))
+        .replace("{{todayCarbs}}", String(todayCarbs))
+        .replace("{{todayFat}}", String(todayFat))
+        .replace("{{remainingCalories}}", String(remainingCalories))
+        .replace("{{message}}", trimmed);
 
-User message: "${trimmed}"
+      const responseText = await generateWithGemini({
+        model: QUESTION_ANSWERING_MODEL,
+        promptText: prompt,
+      });
 
-Provide a concise, helpful response (2-4 sentences max). Do NOT use emojis.`;
-
-      const response = await model.generateContent(prompt);
       return {
         action: "CHAT",
-        reply: response.response.text().trim(),
+        reply: responseText.trim(),
       };
     } catch (err) {
       console.warn("Gemini Q&A error:", err.message);
@@ -400,4 +522,5 @@ Provide a concise, helpful response (2-4 sentences max). Do NOT use emojis.`;
 module.exports = {
   analyzeFoodImage,
   chatWithAssistant,
+  importMealsFromPdf,
 };

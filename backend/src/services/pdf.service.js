@@ -1,4 +1,4 @@
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 const prisma = require("../config/prisma");
 
 /**
@@ -120,8 +120,15 @@ async function importMealsFromPdf(userId, pdfBuffer) {
     throw new Error("Valid PDF buffer is required");
   }
 
-  const data = await pdfParse(pdfBuffer);
-  const rawText = data.text || "";
+  const parser = new PDFParse({ data: pdfBuffer });
+  let rawText = "";
+
+  try {
+    const data = await parser.getText();
+    rawText = data.text || "";
+  } finally {
+    await parser.destroy();
+  }
   
   if (!rawText.trim()) {
     throw new Error("Could not extract readable text from PDF");
