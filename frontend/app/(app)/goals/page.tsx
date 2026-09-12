@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ErrorState } from "@/components/common/error-state";
 import { PageHeader } from "@/components/common/page-header";
 import { GoalForm } from "@/components/goals/goal-form";
 import { GoalProgressPreview } from "@/components/goals/goal-progress-preview";
+import { GoalSummary } from "@/components/goals/goal-summary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGoal } from "@/hooks/use-goal";
 import { useMeals } from "@/hooks/use-meals";
@@ -16,6 +17,23 @@ export default function GoalsPage() {
   const { goal, isLoading, error, refetch, save } = useGoal();
   const { meals } = useMeals({ startDate, endDate, limit: 100 });
   const totals = useMemo(() => sumMeals(meals), [meals]);
+
+  const hasGoal = Boolean(goal && goal.dailyCalories != null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && !hasInitialized) {
+      setIsEditing(!hasGoal);
+      setHasInitialized(true);
+    }
+  }, [isLoading, hasGoal, hasInitialized]);
+
+  async function handleSave(...args: Parameters<typeof save>) {
+    const updated = await save(...args);
+    setIsEditing(false);
+    return updated;
+  }
 
   return (
     <div className="space-y-6">
@@ -34,7 +52,15 @@ export default function GoalsPage() {
       ) : (
         !error && (
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-            <GoalForm goal={goal} onSave={save} />
+            {isEditing || !goal ? (
+              <GoalForm
+                goal={goal}
+                onSave={handleSave}
+                onCancel={hasGoal ? () => setIsEditing(false) : undefined}
+              />
+            ) : (
+              <GoalSummary goal={goal} onEdit={() => setIsEditing(true)} />
+            )}
             <GoalProgressPreview goal={goal} totals={totals} />
           </div>
         )

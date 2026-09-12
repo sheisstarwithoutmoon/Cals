@@ -28,9 +28,9 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
       <CardHeader>
         <CardTitle>Macro breakdown</CardTitle>
       </CardHeader>
-      <CardContent className="h-72">
+      <CardContent>
         {!hasData ? (
-          <div className="flex h-full items-center justify-center">
+          <div className="flex h-64 items-center justify-center">
             <EmptyState
               icon={PieChartIcon}
               title="No macro data yet"
@@ -38,47 +38,51 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
             />
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="name"
-                innerRadius="55%"
-                outerRadius="80%"
-                paddingAngle={2}
-                strokeWidth={0}
-              >
-                {data.map((entry, index) => (
-                  <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: "var(--popover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                  fontSize: 12,
-                }}
-                formatter={(value, name) => [
-                  `${formatNumber(Number(value))} g`,
-                  String(name),
-                ]}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          <>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius="55%"
+                    outerRadius="80%"
+                    paddingAngle={2}
+                    strokeWidth={0}
+                  >
+                    {data.map((entry, index) => (
+                      <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                      fontSize: 12,
+                    }}
+                    formatter={(value, name) => [
+                      `${formatNumber(Number(value))} g`,
+                      String(name),
+                    ]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+              {data.map((entry, index) => (
+                <span key={entry.name} className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ background: COLORS[index % COLORS.length] }}
+                  />
+                  {entry.name} · {formatNumber(entry.value)}g
+                </span>
+              ))}
+            </div>
+          </>
         )}
-        <div className="mt-1 flex justify-center gap-4 text-xs text-muted-foreground">
-          {data.map((entry, index) => (
-            <span key={entry.name} className="flex items-center gap-1.5">
-              <span
-                className="size-2 rounded-full"
-                style={{ background: COLORS[index % COLORS.length] }}
-              />
-              {entry.name} · {formatNumber(entry.value)}g
-            </span>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );

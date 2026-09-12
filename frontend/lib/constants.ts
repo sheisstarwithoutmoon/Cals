@@ -47,3 +47,27 @@ export const GOAL_TYPE_DESCRIPTIONS: Record<GoalType, string> = {
   GAIN: "A calorie surplus to support gaining weight.",
 };
 
+export const VITAMIN_MINERAL_KEYS = [
+  "Vitamin A (mcg)",
+  "Vitamin C (mg)",
+  "Calcium (mg)",
+  "Iron (mg)",
+  "Potassium (mg)",
+] as const;
+
+/**
+ * Approximate general adult daily reference values, used only to put
+ * nutrients with very different units (mcg, mg, g) on one comparable
+ * "% of daily value" scale in the reports charts.
+ */
+export const NUTRIENT_DAILY_VALUES: Record<string, number> = {
+  "Vitamin A (mcg)": 900,
+  "Vitamin C (mg)": 90,
+  "Calcium (mg)": 1300,
+  "Iron (mg)": 18,
+  "Potassium (mg)": 4700,
+  "Fiber (g)": 28,
+  "Sugar (g)": 50,
+  "Sodium (mg)": 2300,
+};
+

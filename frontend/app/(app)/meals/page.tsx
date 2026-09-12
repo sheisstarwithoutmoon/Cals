@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PlusIcon, UtensilsCrossedIcon } from "lucide-react";
+import { PlusIcon, UploadCloudIcon, UtensilsCrossedIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,12 +15,10 @@ import {
 import { MealFormDialog } from "@/components/meals/meal-form-dialog";
 import { MealListItem } from "@/components/meals/meal-list-item";
 import { MealPagination } from "@/components/meals/meal-pagination";
-import { AiImageModal } from "@/components/meals/ai-image-modal";
-import { PdfImportModal } from "@/components/meals/pdf-import-modal";
+import { ImportMealModal } from "@/components/meals/import-meal-modal";
 import { useMeals } from "@/hooks/use-meals";
 import { formatDate } from "@/lib/format";
 import type { MealListFilters, MealType } from "@/lib/types/api";
-import { CameraIcon, FileTextIcon } from "lucide-react";
 
 const DEFAULT_FILTERS: MealFiltersState = {
   mealType: "ALL",
@@ -31,8 +29,7 @@ const DEFAULT_FILTERS: MealFiltersState = {
 export default function MealsPage() {
   const [filters, setFilters] = useState<MealFiltersState>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
-  const [isAiImageOpen, setIsAiImageOpen] = useState(false);
-  const [isPdfImportOpen, setIsPdfImportOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const apiFilters: MealListFilters = useMemo(
     () => ({
@@ -70,19 +67,11 @@ export default function MealsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => setIsPdfImportOpen(true)}
+              onClick={() => setIsImportOpen(true)}
               className="rounded-full border-emerald-300 text-emerald-800 hover:bg-emerald-50"
             >
-              <FileTextIcon className="size-4" />
-              <span>Import PDF</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setIsAiImageOpen(true)}
-              className="rounded-full border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-            >
-              <CameraIcon className="size-4" />
-              <span>Photo AI Log</span>
+              <UploadCloudIcon className="size-4" />
+              <span>Import meal</span>
             </Button>
             <MealFormDialog
               trigger={
@@ -97,16 +86,10 @@ export default function MealsPage() {
         }
       />
 
-      <AiImageModal
-        isOpen={isAiImageOpen}
-        onClose={() => setIsAiImageOpen(false)}
-        onMealSaved={refetch}
-      />
-
-      <PdfImportModal
-        isOpen={isPdfImportOpen}
-        onClose={() => setIsPdfImportOpen(false)}
-        onImportComplete={refetch}
+      <ImportMealModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImported={refetch}
       />
 
       <MealFilters value={filters} onChange={handleFiltersChange} />

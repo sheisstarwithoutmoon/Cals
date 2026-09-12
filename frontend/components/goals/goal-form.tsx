@@ -14,6 +14,7 @@ import type { Goal, GoalInput } from "@/lib/types/api";
 interface GoalFormProps {
   goal: Goal | null;
   onSave: (input: GoalInput) => Promise<Goal>;
+  onCancel?: () => void;
 }
 
 interface FormState {
@@ -40,7 +41,7 @@ function toOptionalNumber(value: string) {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-export function GoalForm({ goal, onSave }: GoalFormProps) {
+export function GoalForm({ goal, onSave, onCancel }: GoalFormProps) {
   const [form, setForm] = useState<FormState>(() => toFormState(goal));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -84,7 +85,7 @@ export function GoalForm({ goal, onSave }: GoalFormProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Your daily goals</CardTitle>
+        <CardTitle>Edit your goals</CardTitle>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
@@ -175,10 +176,22 @@ export function GoalForm({ goal, onSave }: GoalFormProps) {
             </p>
           )}
 
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting && <Loader2Icon className="animate-spin" />}
-            Save goals
-          </Button>
+          <div className="flex gap-2">
+            {onCancel && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Loader2Icon className="animate-spin" />}
+              Save goals
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

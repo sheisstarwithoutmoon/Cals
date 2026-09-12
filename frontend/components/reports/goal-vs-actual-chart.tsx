@@ -52,7 +52,7 @@ export function GoalVsActualChart({ data, goalCalories }: GoalVsActualChartProps
       </CardHeader>
       <CardContent className="h-72 px-2">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke="var(--border)" />
             <XAxis
               dataKey="label"
@@ -66,7 +66,7 @@ export function GoalVsActualChart({ data, goalCalories }: GoalVsActualChartProps
               axisLine={false}
               fontSize={12}
               stroke="var(--muted-foreground)"
-              width={40}
+              width={44}
             />
             <Tooltip
               contentStyle={{

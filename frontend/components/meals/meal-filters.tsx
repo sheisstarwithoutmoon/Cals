@@ -31,7 +31,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
     value.mealType !== "ALL" || value.startDate || value.endDate;
 
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3">
+    <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-4">
       <div className="space-y-1.5">
         <Label htmlFor="filter-type" className="text-xs text-muted-foreground">
           Meal type
@@ -42,7 +42,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
             onChange({ ...value, mealType: mealType as MealType | "ALL" })
           }
         >
-          <SelectTrigger id="filter-type" className="w-36">
+          <SelectTrigger id="filter-type" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -63,7 +63,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
         <Input
           id="filter-start"
           type="date"
-          className="w-36"
+          className="w-full"
           value={value.startDate}
           onChange={(event) =>
             onChange({ ...value, startDate: event.target.value })
@@ -78,7 +78,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
         <Input
           id="filter-end"
           type="date"
-          className="w-36"
+          className="w-full"
           value={value.endDate}
           onChange={(event) =>
             onChange({ ...value, endDate: event.target.value })
@@ -86,16 +86,19 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
         />
       </div>
 
-      {hasActiveFilters && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onChange({ mealType: "ALL", startDate: "", endDate: "" })}
-        >
-          <XIcon />
-          Clear
-        </Button>
-      )}
+      <div className="flex items-end">
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => onChange({ mealType: "ALL", startDate: "", endDate: "" })}
+          >
+            <XIcon />
+            Clear
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

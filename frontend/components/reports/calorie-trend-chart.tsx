@@ -27,7 +27,7 @@ export function CalorieTrendChart({ data, goalCalories }: CalorieTrendChartProps
       </CardHeader>
       <CardContent className="h-72 px-2">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="calorieFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.35} />
@@ -47,7 +47,7 @@ export function CalorieTrendChart({ data, goalCalories }: CalorieTrendChartProps
               axisLine={false}
               fontSize={12}
               stroke="var(--muted-foreground)"
-              width={40}
+              width={44}
             />
             <Tooltip
               contentStyle={{

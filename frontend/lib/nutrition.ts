@@ -68,6 +68,19 @@ export interface DailyTotal extends NutritionTotals {
   label: string;
 }
 
+/**
+ * Formats a Date as a local (not UTC) calendar-day key. `toISOString()`
+ * converts through UTC first, which shifts the date backward a day for any
+ * timezone ahead of UTC (e.g. IST) — that mismatch silently dropped meals
+ * from their correct day bucket below.
+ */
+function toLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function buildDailyTotals(
   meals: MealEntry[],
   days: number
@@ -78,11 +91,11 @@ export function buildDailyTotals(
   for (let i = days - 1; i >= 0; i -= 1) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     day.setDate(day.getDate() - i);
-    buckets.set(day.toISOString().slice(0, 10), []);
+    buckets.set(toLocalDateKey(day), []);
   }
 
   for (const meal of meals) {
-    const key = new Date(meal.consumedAt).toISOString().slice(0, 10);
+    const key = toLocalDateKey(new Date(meal.consumedAt));
     if (buckets.has(key)) {
       buckets.get(key)!.push(meal);
     }
@@ -97,4 +110,18 @@ export function buildDailyTotals(
 
     return { date, label, ...totals };
   });
+}
+
+export function sumMicronutrients(meals: MealEntry[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+
+  for (const meal of meals) {
+    if (!meal.micronutrients) continue;
+
+    for (const [key, value] of Object.entries(meal.micronutrients)) {
+      totals[key] = (totals[key] ?? 0) + (value ?? 0);
+    }
+  }
+
+  return totals;
 }

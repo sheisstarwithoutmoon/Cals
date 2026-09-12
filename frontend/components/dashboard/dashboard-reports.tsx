@@ -6,11 +6,18 @@ import { InfoIcon } from "lucide-react";
 import { CalorieTrendChart } from "@/components/reports/calorie-trend-chart";
 import { GoalVsActualChart } from "@/components/reports/goal-vs-actual-chart";
 import { MacroBreakdownChart } from "@/components/reports/macro-breakdown-chart";
+import { MacroTrendChart } from "@/components/reports/macro-trend-chart";
 import { MicronutrientChart } from "@/components/reports/micronutrient-chart";
+import { OtherNutrientsChart } from "@/components/reports/other-nutrients-chart";
 import { RangeTabs, type ReportRange } from "@/components/reports/range-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMeals } from "@/hooks/use-meals";
-import { buildDailyTotals, dateRangeForLastDays, sumMeals } from "@/lib/nutrition";
+import {
+  buildDailyTotals,
+  dateRangeForLastDays,
+  sumMeals,
+  sumMicronutrients,
+} from "@/lib/nutrition";
 import type { Goal } from "@/lib/types/api";
 
 interface DashboardReportsProps {
@@ -31,6 +38,7 @@ export function DashboardReports({ goal }: DashboardReportsProps) {
     [meals, range]
   );
   const rangeTotals = useMemo(() => sumMeals(meals), [meals]);
+  const micronutrientTotals = useMemo(() => sumMicronutrients(meals), [meals]);
 
   return (
     <div className="space-y-4">
@@ -43,7 +51,7 @@ export function DashboardReports({ goal }: DashboardReportsProps) {
 
       {isLoading ? (
         <div className="grid gap-6 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, index) => (
+          {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-72 w-full rounded-xl" />
           ))}
         </div>
@@ -58,8 +66,10 @@ export function DashboardReports({ goal }: DashboardReportsProps) {
               data={dailyTotals}
               goalCalories={goal?.dailyCalories}
             />
+            <MacroTrendChart data={dailyTotals} />
             <MacroBreakdownChart totals={rangeTotals} />
-            <MicronutrientChart totals={rangeTotals} />
+            <MicronutrientChart micronutrients={micronutrientTotals} />
+            <OtherNutrientsChart totals={rangeTotals} />
           </div>
 
           <div className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
