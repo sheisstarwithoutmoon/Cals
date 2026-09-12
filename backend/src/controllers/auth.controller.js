@@ -188,7 +188,9 @@ async function googleCallback(req, res, next) {
 
     setAuthCookie(res, result.token);
 
-    res.redirect(frontendUrl);
+    res.redirect(
+      `${frontendUrl}${result.user.onboardingCompleted ? "/dashboard" : "/onboarding"}`
+    );
   } catch (error) {
     console.error(
       "Google OAuth callback failed:",

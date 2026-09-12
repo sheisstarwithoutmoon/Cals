@@ -20,12 +20,33 @@ enum MealSource {
   PDF_IMPORT
 }
 
+enum ActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  ACTIVE
+  VERY_ACTIVE
+}
+
+enum GoalType {
+  LOSE
+  MAINTAIN
+  GAIN
+}
+
 model User {
   id           String       @id @default(cuid())
   name         String
   email        String       @unique
   passwordHash String?
   googleId     String?      @unique
+
+  age                 Int?
+  heightCm            Float?
+  currentWeight       Float?
+  activityLevel       ActivityLevel?
+  goalType            GoalType?
+  onboardingCompleted Boolean        @default(false)
 
   goal         Goal?
   mealEntries  MealEntry[]
