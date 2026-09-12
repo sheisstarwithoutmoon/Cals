@@ -31,7 +31,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
     value.mealType !== "ALL" || value.startDate || value.endDate;
 
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-[minmax(180px,1.1fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto]">
       <div className="space-y-1.5">
         <Label htmlFor="filter-type" className="text-xs text-muted-foreground">
           Meal type
@@ -86,18 +86,20 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
         />
       </div>
 
-      <div className="flex items-end">
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full sm:w-auto"
-            onClick={() => onChange({ mealType: "ALL", startDate: "", endDate: "" })}
-          >
-            <XIcon />
-            Clear
-          </Button>
-        )}
+      <div className="flex items-end justify-start sm:justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!hasActiveFilters}
+          aria-hidden={!hasActiveFilters}
+          className={`w-full text-rose-600 hover:bg-rose-50 hover:text-rose-700 sm:w-auto ${
+            hasActiveFilters ? "" : "invisible"
+          }`}
+          onClick={() => onChange({ mealType: "ALL", startDate: "", endDate: "" })}
+        >
+          <XIcon />
+          Clear
+        </Button>
       </div>
     </div>
   );
