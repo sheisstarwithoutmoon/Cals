@@ -7,11 +7,51 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  onboardingCompleted: boolean;
   createdAt: string;
 }
 
 export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
 export type MealSource = "MANUAL" | "AI" | "PDF_IMPORT";
+
+export type ActivityLevel =
+  | "SEDENTARY"
+  | "LIGHT"
+  | "MODERATE"
+  | "ACTIVE"
+  | "VERY_ACTIVE";
+
+export type GoalType = "LOSE" | "MAINTAIN" | "GAIN";
+
+export interface OnboardingProfile {
+  name: string;
+  age: number | null;
+  heightCm: number | null;
+  currentWeight: number | null;
+  activityLevel: ActivityLevel | null;
+}
+
+export interface OnboardingStatus {
+  profile: OnboardingProfile;
+  goalType: GoalType | null;
+  onboardingCompleted: boolean;
+  nextStep: 1 | 2 | 3 | null;
+}
+
+export interface OnboardingProfileInput {
+  name: string;
+  age: number;
+  heightCm: number;
+  currentWeight: number;
+  activityLevel: ActivityLevel;
+}
+
+export interface OnboardingTargets {
+  dailyCalories: number;
+  dailyProtein: number;
+  dailyCarbs: number;
+  dailyFat: number;
+}
 
 export interface Goal {
   id: string;

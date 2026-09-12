@@ -5,7 +5,7 @@ import { HowItWorks } from "@/components/landing/how-it-works";
 import { SiteFooter } from "@/components/landing/site-footer";
 
 export const metadata: Metadata = {
-  title: "Cals | Keep Track of Your Calories",
+  title: "Cals",
   description:
     "A modern nutrition platform to monitor daily intake, log meals across breakfast, lunch, and dinner, set health goals, and visualize macro and micronutrient trends effortlessly.",
 };

@@ -28,6 +28,7 @@ async function registerUser({ name, email, password }) {
       id: true,
       name: true,
       email: true,
+      onboardingCompleted: true,
       createdAt: true,
     },
   });
@@ -66,6 +67,7 @@ async function loginUser({ email, password }) {
       id: user.id,
       name: user.name,
       email: user.email,
+      onboardingCompleted: user.onboardingCompleted,
       createdAt: user.createdAt,
     },
     token,
@@ -79,6 +81,7 @@ async function getUserById(userId) {
       id: true,
       name: true,
       email: true,
+      onboardingCompleted: true,
       createdAt: true,
     },
   });
@@ -125,6 +128,7 @@ async function loginOrCreateGoogleUser({
       id: user.id,
       name: user.name,
       email: user.email,
+      onboardingCompleted: user.onboardingCompleted,
       createdAt: user.createdAt,
     },
     token,

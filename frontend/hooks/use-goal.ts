@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import * as goalsApi from "@/lib/api/goals";
 import { ApiError } from "@/lib/api/client";
+import { onDataChanged } from "@/lib/events";
 import type { Goal, GoalInput } from "@/lib/types/api";
 
 export function useGoal() {
@@ -36,6 +37,8 @@ export function useGoal() {
   useEffect(() => {
     fetchGoal();
   }, [fetchGoal]);
+
+  useEffect(() => onDataChanged(fetchGoal), [fetchGoal]);
 
   const save = useCallback(async (input: GoalInput) => {
     const { goal } = await goalsApi.saveGoal(input);

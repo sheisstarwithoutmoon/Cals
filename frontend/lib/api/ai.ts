@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
-import type { MealEntry, MealType } from "@/lib/types/api";
+import type { Goal, MealEntry, MealType } from "@/lib/types/api";
 
 export interface ExtractedNutrition {
   foodName: string;
@@ -19,9 +19,10 @@ export interface ExtractedNutrition {
 
 export interface ChatResponse {
   success: boolean;
-  action: "CHAT" | "MEAL_LOGGED" | "GOAL_CHECK" | "WEEKLY_SUMMARY";
+  action: "CHAT" | "MEAL_LOGGED" | "GOAL_CHECK" | "GOAL_UPDATED" | "WEEKLY_SUMMARY";
   reply: string;
   meal?: MealEntry;
+  goal?: Goal;
   summary?: {
     totalMealsLogged: number;
     totalWeekCalories: number;

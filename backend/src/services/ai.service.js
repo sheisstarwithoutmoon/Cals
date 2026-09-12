@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const prisma = require("../config/prisma");
 const { getMeals } = require("./meal.service");
-const { getGoalByUserId } = require("./goal.service");
+const { getGoalByUserId, createOrUpdateGoal } = require("./goal.service");
 
 const apiKey = process.env.GEMINI_API_KEY;
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
@@ -78,6 +78,49 @@ function fallbackNutritionEstimate(queryOrName = "Food item") {
     },
     confidence: 0.88,
   };
+}
+
+const GOAL_FIELD_PATTERNS = [
+  { field: "dailyCalories", regex: /(calorie|calories|kcal)/i, unit: "kcal" },
+  { field: "dailyProtein", regex: /protein/i, unit: "g" },
+  { field: "dailyCarbs", regex: /(carbohydrate|carbs?)/i, unit: "g" },
+  { field: "dailyFat", regex: /\bfat\b/i, unit: "g" },
+  { field: "targetWeight", regex: /weight/i, unit: "kg" },
+];
+
+const GOAL_FIELD_LABELS = {
+  dailyCalories: "daily calorie",
+  dailyProtein: "daily protein",
+  dailyCarbs: "daily carb",
+  dailyFat: "daily fat",
+  targetWeight: "target weight",
+};
+
+const GOAL_FIELD_MAX = {
+  dailyCalories: 10000,
+  dailyProtein: 1000,
+  dailyCarbs: 1500,
+  dailyFat: 500,
+  targetWeight: 500,
+};
+
+/**
+ * Parses a natural-language goal update like "set my daily calorie goal to
+ * 1800" into a { field, value, unit } triple the Goal model understands.
+ * Returns null if no number/field was found, or "out-of-range" if a field
+ * was recognized but the number is outside a sane bound.
+ */
+function parseGoalUpdate(message) {
+  const numberMatch = message.match(/(\d+(\.\d+)?)/);
+  if (!numberMatch) return null;
+
+  const value = parseFloat(numberMatch[1]);
+  const match = GOAL_FIELD_PATTERNS.find(({ regex }) => regex.test(message));
+
+  if (!match) return null;
+  if (value <= 0 || value > GOAL_FIELD_MAX[match.field]) return "out-of-range";
+
+  return { field: match.field, value, unit: match.unit };
 }
 
 /**
@@ -261,6 +304,39 @@ Return strictly a JSON object:
       action: "MEAL_LOGGED",
       meal: createdMeal,
       reply: `Logged ${createdMeal.foodName} to ${createdMeal.mealType.toLowerCase()} (${createdMeal.calories} kcal, ${createdMeal.protein}g protein, ${createdMeal.carbs}g carbs, ${createdMeal.fat}g fat). You've consumed ${newTodayCalories} kcal today with ${newRemaining} kcal remaining against your goal.`,
+    };
+  }
+
+  // Check if user wants to set or update a goal target
+  const isGoalUpdateIntent =
+    /^(set|update|change)\b/i.test(lower) && /(goal|target)/i.test(lower);
+
+  if (isGoalUpdateIntent) {
+    const parsed = parseGoalUpdate(trimmed);
+
+    if (parsed === "out-of-range") {
+      return {
+        action: "CHAT",
+        reply: "That number looks out of range for a daily target. Please try a more typical value.",
+      };
+    }
+
+    if (!parsed) {
+      return {
+        action: "CHAT",
+        reply:
+          'Tell me which target to update and the new number, e.g. "set my daily calorie goal to 1800" or "update my protein target to 150g".',
+      };
+    }
+
+    const updatedGoal = await createOrUpdateGoal(userId, {
+      [parsed.field]: parsed.value,
+    });
+
+    return {
+      action: "GOAL_UPDATED",
+      goal: updatedGoal,
+      reply: `Updated your ${GOAL_FIELD_LABELS[parsed.field]} target to ${parsed.value}${parsed.unit}.`,
     };
   }
 

@@ -7,6 +7,7 @@ const authRoutes = require("./src/routes/auth.routes");
 const goalRoutes = require("./src/routes/goal.routes");
 const mealRoutes = require("./src/routes/meal.routes");
 const aiRoutes = require("./src/routes/ai.routes");
+const onboardingRoutes = require("./src/routes/onboarding.routes");
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/meals", mealRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/onboarding", onboardingRoutes);
 
 app.use((error, req, res, next) => {
   console.error(error);

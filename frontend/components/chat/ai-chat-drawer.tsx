@@ -2,46 +2,48 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  BotIcon,
   CheckCircle2Icon,
   Loader2Icon,
   SendIcon,
+  SparklesIcon,
   UserIcon,
   XIcon,
 } from "lucide-react";
 
+import { ApiError } from "@/lib/api/client";
 import { sendChatMessage, type ChatResponse } from "@/lib/api/ai";
+import { notifyDataChanged } from "@/lib/events";
+import type { Goal, MealEntry } from "@/lib/types/api";
 
 interface MessageItem {
   id: string;
   sender: "user" | "assistant";
   text: string;
-  action?: string;
-  meal?: any;
-  summary?: any;
+  action?: ChatResponse["action"];
+  meal?: MealEntry;
+  goal?: Goal;
+  summary?: ChatResponse["summary"];
 }
 
 const QUICK_PROMPTS = [
   "Log 2 eggs and coffee",
   "How many calories do I have left?",
+  "Set my daily calorie goal to 2000",
   "Show my weekly summary",
-  "Suggest high-protein snacks",
 ];
 
 export function AiChatDrawer({
   isOpen,
   onClose,
-  onMealLogged,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onMealLogged?: () => void;
 }) {
   const [messages, setMessages] = useState<MessageItem[]>([
     {
       id: "welcome",
       sender: "assistant",
-      text: "Hi! You can ask me to log a meal, check your calories, view your nutrition summary, or ask a nutrition question.",
+      text: "Hi! You can ask me to log a meal, check or update your goals, view your nutrition summary, or ask a nutrition question.",
     },
   ]);
 
@@ -59,12 +61,12 @@ export function AiChatDrawer({
   if (!isOpen) return null;
 
   async function handleSend(textToSend?: string) {
-    const text = (textToSend || inputValue).trim();
+    const text = (textToSend ?? inputValue).trim();
 
     if (!text || isLoading) return;
 
     const userMessage: MessageItem = {
-      id: `user - ${Date.now()} `,
+      id: `user-${Date.now()}`,
       sender: "user",
       text,
     };
@@ -79,34 +81,34 @@ export function AiChatDrawer({
         content: message.text,
       }));
 
-      const response: ChatResponse = await sendChatMessage({
-        message: text,
-        history,
-      });
+      const response = await sendChatMessage({ message: text, history });
 
-      if (response.success) {
-        const assistantMessage: MessageItem = {
-          id: `assistant - ${Date.now()} `,
+      setMessages((current) => [
+        ...current,
+        {
+          id: `assistant-${Date.now()}`,
           sender: "assistant",
           text: response.reply,
           action: response.action,
           meal: response.meal,
+          goal: response.goal,
           summary: response.summary,
-        };
+        },
+      ]);
 
-        setMessages((current) => [...current, assistantMessage]);
-
-        if (response.action === "MEAL_LOGGED") {
-          onMealLogged?.();
-        }
+      if (response.action === "MEAL_LOGGED" || response.action === "GOAL_UPDATED") {
+        notifyDataChanged();
       }
-    } catch {
+    } catch (error) {
       setMessages((current) => [
         ...current,
         {
-          id: `error - ${Date.now()} `,
+          id: `error-${Date.now()}`,
           sender: "assistant",
-          text: "Something went wrong. Please try again.",
+          text:
+            error instanceof ApiError
+              ? error.message
+              : "Something went wrong. Please try again.",
         },
       ]);
     } finally {
@@ -125,7 +127,7 @@ export function AiChatDrawer({
         <div className="flex items-center justify-between border-b border-stone-100 bg-[#eef7f2] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-700 text-white">
-              <BotIcon className="size-5" />
+              <SparklesIcon className="size-5" />
             </div>
 
             <div>
@@ -155,28 +157,29 @@ export function AiChatDrawer({
             return (
               <div
                 key={message.id}
-                className={`flex items - start gap - 2.5 ${isUser ? "flex-row-reverse" : ""
-                  } `}
+                className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}
               >
                 <div
-                  className={`flex size - 7 shrink - 0 items - center justify - center rounded - full ${isUser
-                    ? "bg-stone-900 text-white"
-                    : "bg-emerald-100 text-emerald-800"
-                    } `}
+                  className={`flex size-7 shrink-0 items-center justify-center rounded-full ${
+                    isUser
+                      ? "bg-stone-900 text-white"
+                      : "bg-emerald-100 text-emerald-800"
+                  }`}
                 >
                   {isUser ? (
                     <UserIcon className="size-3.5" />
                   ) : (
-                    <BotIcon className="size-3.5" />
+                    <SparklesIcon className="size-3.5" />
                   )}
                 </div>
 
                 <div className="max-w-[85%] space-y-2">
                   <div
-                    className={`rounded - 2xl px - 4 py - 3 text - xs leading - relaxed sm: text - sm ${isUser
-                      ? "rounded-tr-xs bg-stone-900 text-white"
-                      : "rounded-tl-xs border border-emerald-100/60 bg-[#eaf4ee] text-stone-800"
-                      } `}
+                    className={`rounded-2xl px-4 py-3 text-xs leading-relaxed sm:text-sm ${
+                      isUser
+                        ? "rounded-tr-xs bg-stone-900 text-white"
+                        : "rounded-tl-xs border border-emerald-100/60 bg-[#eaf4ee] text-stone-800"
+                    }`}
                   >
                     {message.text}
                   </div>
@@ -193,6 +196,35 @@ export function AiChatDrawer({
                         <span className="font-bold">
                           {message.meal.calories} kcal
                         </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {message.goal && (
+                    <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center text-[11px]">
+                      <div className="rounded-lg bg-stone-50 p-1.5">
+                        <p className="font-bold uppercase text-stone-500">Cal</p>
+                        <p className="font-bold text-stone-900">
+                          {message.goal.dailyCalories ?? "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-stone-50 p-1.5">
+                        <p className="font-bold uppercase text-stone-500">Protein</p>
+                        <p className="font-bold text-stone-900">
+                          {message.goal.dailyProtein ?? "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-stone-50 p-1.5">
+                        <p className="font-bold uppercase text-stone-500">Carbs</p>
+                        <p className="font-bold text-stone-900">
+                          {message.goal.dailyCarbs ?? "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-stone-50 p-1.5">
+                        <p className="font-bold uppercase text-stone-500">Fat</p>
+                        <p className="font-bold text-stone-900">
+                          {message.goal.dailyFat ?? "-"}
+                        </p>
                       </div>
                     </div>
                   )}
