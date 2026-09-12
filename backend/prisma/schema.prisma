@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum MealSource {
+  MANUAL
+  AI
+  PDF_IMPORT
+}
+
+model User {
+  id           String       @id @default(cuid())
+  name         String
+  email        String       @unique
+  passwordHash String?
+  googleId     String?      @unique
+
+  goal         Goal?
+  mealEntries  MealEntry[]
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Goal {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+
+  dailyCalories  Float?
+  dailyProtein   Float?
+  dailyCarbs     Float?
+  dailyFat       Float?
+  targetWeight   Float?
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model MealEntry {
+  id              String     @id @default(cuid())
+  userId          String
+
+  mealType        MealType
+  foodName        String
+  quantity        Float?
+  quantityUnit    String?
+
+  calories        Float
+  protein         Float?
+  carbs           Float?
+  fat             Float?
+
+  fiber           Float?
+  sugar           Float?
+  sodium          Float?
+
+  micronutrients  Json?
+
+  consumedAt      DateTime
+  source          MealSource @default(MANUAL)
+
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, consumedAt])
+  @@index([userId, mealType])
+}
