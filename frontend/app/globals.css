@@ -151,4 +151,58 @@
     margin: 0;
     -webkit-appearance: none;
   }
+
+  /* Recharts renders its SVG surface as focusable (tabindex="0"), so tapping
+     or clicking a chart triggers the browser's default focus outline in the
+     global ring color — this shows up as an unwanted green border around the
+     whole chart. Charts aren't keyboard-interactive content, so suppress it. */
+  .recharts-wrapper:focus,
+  .recharts-wrapper *:focus,
+  .recharts-surface:focus,
+  .recharts-surface:focus-visible {
+    outline: none;
+  }
+}
+
+@keyframes scan-line {
+  0%,
+  100% {
+    top: 10%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  50% {
+    top: 85%;
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+}
+
+@keyframes scan-label {
+  0%,
+  20% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  30%,
+  90% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+.animate-scan-line {
+  animation: scan-line 3.6s ease-in-out infinite;
+}
+
+.animate-scan-label {
+  animation: scan-label 3.6s ease-in-out infinite;
 }

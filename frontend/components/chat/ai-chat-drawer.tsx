@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   CheckCircle2Icon,
+  FileTextIcon,
   Loader2Icon,
+  MicIcon,
+  PaperclipIcon,
   SendIcon,
+  Squircle,
   SparklesIcon,
   UserIcon,
   XIcon,
@@ -15,6 +19,13 @@ import { sendChatMessage, type ChatResponse } from "@/lib/api/ai";
 import { notifyDataChanged } from "@/lib/events";
 import type { Goal, MealEntry } from "@/lib/types/api";
 
+interface PendingFile {
+  dataUrl: string;
+  mimeType: string;
+  name: string;
+  kind: "IMAGE" | "PDF";
+}
+
 interface MessageItem {
   id: string;
   sender: "user" | "assistant";
@@ -23,6 +34,9 @@ interface MessageItem {
   meal?: MealEntry;
   goal?: Goal;
   summary?: ChatResponse["summary"];
+  importedCount?: number;
+  skippedCount?: number;
+  attachment?: PendingFile;
 }
 
 const QUICK_PROMPTS = [
@@ -31,6 +45,22 @@ const QUICK_PROMPTS = [
   "Set my daily calorie goal to 2000",
   "Show my weekly summary",
 ];
+
+function fileToPending(file: File): Promise<PendingFile> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        dataUrl: reader.result as string,
+        mimeType: file.type,
+        name: file.name,
+        kind: file.type === "application/pdf" ? "PDF" : "IMAGE",
+      });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export function AiChatDrawer({
   isOpen,
@@ -43,14 +73,20 @@ export function AiChatDrawer({
     {
       id: "welcome",
       sender: "assistant",
-      text: "Hi! You can ask me to log a meal, check or update your goals, view your nutrition summary, or ask a nutrition question.",
+      text: "Hi! Tell me what you ate, ask about your goals, or attach a food photo / PDF diary and I'll log it for you by text or voice.",
     },
   ]);
 
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -58,21 +94,77 @@ export function AiChatDrawer({
     }
   }, [messages, isOpen]);
 
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    setVoiceSupported(true);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join(" ");
+      setInputValue((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    };
+    recognition.onerror = () => setIsRecording(false);
+    recognition.onend = () => setIsRecording(false);
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.stop();
+    };
+  }, []);
+
   if (!isOpen) return null;
+
+  function toggleRecording() {
+    if (!recognitionRef.current) return;
+
+    if (isRecording) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    } else {
+      recognitionRef.current.start();
+      setIsRecording(true);
+    }
+  }
+
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const isPdf = file.type === "application/pdf";
+    const isImage = file.type.startsWith("image/");
+    if (!isPdf && !isImage) return;
+
+    const pending = await fileToPending(file);
+    setPendingFile(pending);
+  }
 
   async function handleSend(textToSend?: string) {
     const text = (textToSend ?? inputValue).trim();
+    const file = pendingFile;
 
-    if (!text || isLoading) return;
+    if ((!text && !file) || isLoading) return;
 
     const userMessage: MessageItem = {
       id: `user-${Date.now()}`,
       sender: "user",
-      text,
+      text: text || (file?.kind === "IMAGE" ? "Sent a photo" : "Sent a PDF"),
+      attachment: file ?? undefined,
     };
 
     setMessages((current) => [...current, userMessage]);
     setInputValue("");
+    setPendingFile(null);
     setIsLoading(true);
 
     try {
@@ -81,7 +173,13 @@ export function AiChatDrawer({
         content: message.text,
       }));
 
-      const response = await sendChatMessage({ message: text, history });
+      const response = await sendChatMessage({
+        message: text || (file?.kind === "IMAGE" ? "Log this meal from the photo" : "Import this PDF"),
+        history,
+        imageBase64: file?.kind === "IMAGE" ? file.dataUrl : undefined,
+        imageMimeType: file?.kind === "IMAGE" ? file.mimeType : undefined,
+        pdfBase64: file?.kind === "PDF" ? file.dataUrl : undefined,
+      });
 
       setMessages((current) => [
         ...current,
@@ -93,10 +191,16 @@ export function AiChatDrawer({
           meal: response.meal,
           goal: response.goal,
           summary: response.summary,
+          importedCount: response.importedCount,
+          skippedCount: response.skippedCount,
         },
       ]);
 
-      if (response.action === "MEAL_LOGGED" || response.action === "GOAL_UPDATED") {
+      if (
+        response.action === "MEAL_LOGGED" ||
+        response.action === "GOAL_UPDATED" ||
+        response.action === "PDF_IMPORTED"
+      ) {
         notifyDataChanged();
       }
     } catch (error) {
@@ -124,18 +228,18 @@ export function AiChatDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end bg-stone-900/30 backdrop-blur-xs">
       <div className="relative flex h-full w-full max-w-md flex-col border-l border-stone-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-stone-100 bg-[#eef7f2] px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-700 text-white">
+        <div className="flex items-center justify-between bg-linear-to-br from-emerald-700 to-emerald-800 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white ring-1 ring-white/20">
               <SparklesIcon className="size-5" />
             </div>
 
-            <div>
-              <h2 className="font-heading text-base font-bold text-stone-900">
-                Cals Assistant
+            <div className="min-w-0">
+              <h2 className="font-heading text-base font-bold text-white">
+                Ask Cals
               </h2>
-              <p className="text-[11px] text-stone-500">
-                Ask about your nutrition
+              <p className="truncate text-[11px] text-emerald-50/80">
+                Log meals, check goals, or ask nutrition questions
               </p>
             </div>
           </div>
@@ -143,14 +247,14 @@ export function AiChatDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-white hover:text-stone-700"
+            className="shrink-0 rounded-full p-1.5 text-emerald-50/80 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Close"
           >
             <XIcon className="size-5" />
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-[#eef7f2]/20 to-white p-4 sm:p-5">
+        <div className="flex-1 space-y-4 overflow-y-auto bg-[#f7fbf8] p-4 sm:p-5">
           {messages.map((message) => {
             const isUser = message.sender === "user";
 
@@ -173,12 +277,34 @@ export function AiChatDrawer({
                   )}
                 </div>
 
-                <div className="max-w-[85%] space-y-2">
+                <div className="max-w-[85%] min-w-0 space-y-2">
+                  {message.attachment && (
+                    <div
+                      className={`overflow-hidden rounded-2xl border ${
+                        isUser ? "border-stone-700" : "border-emerald-100"
+                      }`}
+                    >
+                      {message.attachment.kind === "IMAGE" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={message.attachment.dataUrl}
+                          alt="Uploaded"
+                          className="max-h-40 w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2 bg-stone-100 px-3 py-2 text-xs font-medium text-stone-700">
+                          <FileTextIcon className="size-4 shrink-0" />
+                          <span className="truncate">{message.attachment.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div
-                    className={`rounded-2xl px-4 py-3 text-xs leading-relaxed sm:text-sm ${
+                    className={`rounded-2xl px-4 py-3 text-xs leading-relaxed break-words sm:text-sm ${
                       isUser
                         ? "rounded-tr-xs bg-stone-900 text-white"
-                        : "rounded-tl-xs border border-emerald-100/60 bg-[#eaf4ee] text-stone-800"
+                        : "rounded-tl-xs border border-emerald-100/60 bg-white text-stone-800 shadow-xs"
                     }`}
                   >
                     {message.text}
@@ -191,11 +317,32 @@ export function AiChatDrawer({
                         <span>{message.meal.mealType}</span>
                       </div>
 
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800">
-                        <span>{message.meal.foodName}</span>
-                        <span className="font-bold">
+                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-emerald-800">
+                        <span className="truncate">{message.meal.foodName}</span>
+                        <span className="shrink-0 font-bold">
                           {message.meal.calories} kcal
                         </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {message.action === "PDF_IMPORTED" && (
+                    <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center">
+                      <div className="rounded-lg bg-stone-50 p-1.5">
+                        <p className="text-[10px] font-bold uppercase text-stone-500">
+                          Imported
+                        </p>
+                        <p className="font-bold text-emerald-800">
+                          {message.importedCount ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-stone-50 p-1.5">
+                        <p className="text-[10px] font-bold uppercase text-stone-500">
+                          Skipped
+                        </p>
+                        <p className="font-bold text-stone-900">
+                          {message.skippedCount ?? 0}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -286,20 +433,84 @@ export function AiChatDrawer({
         </div>
 
         <div className="border-t border-stone-100 bg-white p-3">
-          <form onSubmit={handleSubmit} className="flex items-center gap-2">
+          {pendingFile && (
+            <div className="mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              {pendingFile.kind === "IMAGE" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={pendingFile.dataUrl}
+                  alt="Attachment preview"
+                  className="size-8 shrink-0 rounded-lg object-cover"
+                />
+              ) : (
+                <FileTextIcon className="size-5 shrink-0 text-emerald-700" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-emerald-900">
+                {pendingFile.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPendingFile(null)}
+                className="shrink-0 rounded-full p-1 text-emerald-700 hover:bg-emerald-100"
+                aria-label="Remove attachment"
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf,application/pdf"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              aria-label="Attach a photo or PDF"
+              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 disabled:opacity-40"
+            >
+              <PaperclipIcon className="size-4.5" />
+            </button>
+
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={isLoading}
+                aria-label={isRecording ? "Stop recording" : "Speak your message"}
+                className={`flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+                  isRecording
+                    ? "bg-rose-100 text-rose-600"
+                    : "text-stone-500 hover:bg-stone-100"
+                }`}
+              >
+                {isRecording ? (
+                  <Squircle className="size-4 fill-current" />
+                ) : (
+                  <MicIcon className="size-4.5" />
+                )}
+              </button>
+            )}
+
             <input
               type="text"
               value={inputValue}
               onChange={(event) => setInputValue(event.target.value)}
-              placeholder="Ask something or log a meal"
+              placeholder={isRecording ? "Listening..." : "Ask something or log a meal"}
               disabled={isLoading}
               className="flex-1 rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-xs text-stone-900 outline-none placeholder:text-stone-400 focus:border-emerald-600 focus:bg-white sm:text-sm"
             />
 
             <button
               type="submit"
-              disabled={isLoading || !inputValue.trim()}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-40"
+              disabled={isLoading || (!inputValue.trim() && !pendingFile)}
+              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-40"
               aria-label="Send message"
             >
               <SendIcon className="size-4" />

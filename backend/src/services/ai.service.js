@@ -3,6 +3,7 @@ const prisma = require("../config/prisma");
 const { getMeals } = require("./meal.service");
 const { getGoalByUserId, createOrUpdateGoal } = require("./goal.service");
 const { loadPrompt } = require("../utils/load-prompt");
+const { uploadAttachment } = require("./upload.service");
 
 const imageNutritionPrompt = loadPrompt("image-nutrition.prompt.md");
 const mealExtractionPrompt = loadPrompt("meal-extraction.prompt.md");
@@ -166,7 +167,7 @@ async function generateWithGemini({ model, promptText, filePart }) {
  * Returns null if the entry is missing a usable calorie count, so a bulk
  * import can skip bad rows instead of failing the whole batch.
  */
-function normalizeMealEntry(raw, userId) {
+function normalizeMealEntry(raw, userId, attachmentUrl) {
   if (!raw || typeof raw.calories !== "number") return null;
 
   const consumedAt = raw.date ? new Date(raw.date) : new Date();
@@ -186,6 +187,8 @@ function normalizeMealEntry(raw, userId) {
     sugar: Math.max(0, Math.round((raw.sugar || 0) * 10) / 10),
     sodium: Math.max(0, Math.round((raw.sodium || 0) * 10) / 10),
     micronutrients: raw.micronutrients || {},
+    attachmentUrl: attachmentUrl || undefined,
+    attachmentType: attachmentUrl ? "PDF" : undefined,
     consumedAt,
     source: "PDF_IMPORT",
   };
@@ -215,6 +218,8 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
     throw new Error("PDF import requires the Gemini API to be configured (GEMINI_API_KEY missing).");
   }
 
+  const attachmentUrl = await uploadAttachment(pdfBase64, "cals/pdf-imports");
+
   const filePart = {
     inlineData: {
       data: base64Data,
@@ -242,7 +247,7 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
   }
 
   const normalizedEntries = rawEntries
-    .map((entry) => normalizeMealEntry(entry, userId))
+    .map((entry) => normalizeMealEntry(entry, userId, attachmentUrl))
     .filter(Boolean);
 
   const skippedCount = rawEntries.length - normalizedEntries.length;
@@ -259,6 +264,7 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
     action: "PDF_IMPORTED",
     importedCount: created.count,
     skippedCount,
+    sampleEntries: normalizedEntries.slice(0, 5),
     reply: `Imported ${created.count} meal entries from the PDF${
       skippedCount ? ` (${skippedCount} rows skipped — missing or unrecognizable data)` : ""
     }.`,
@@ -275,6 +281,11 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
 
   // Remove base64 header if present
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+
+  const attachmentUrl = await uploadAttachment(imageBase64, "cals/meal-photos");
+  const attachment = attachmentUrl
+    ? { attachmentUrl, attachmentType: "IMAGE" }
+    : {};
 
   if (genAI) {
     try {
@@ -314,6 +325,7 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
           sodium: Math.max(0, Math.round((parsed.sodium || 0) * 10) / 10),
           micronutrients: parsed.micronutrients || {},
           confidence: parsed.confidence || 0.92,
+          ...attachment,
         };
       }
     } catch (err) {
@@ -322,13 +334,105 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
   }
 
   // Fallback estimation
-  return fallbackNutritionEstimate("Analyzed Food Photo");
+  return { ...fallbackNutritionEstimate("Analyzed Food Photo"), ...attachment };
+}
+
+/**
+ * Estimates nutrition from a free-text food description (e.g. a
+ * comma-separated list of items in one meal) without an image — used by the
+ * "Estimate with AI" action in the manual meal-logging form.
+ */
+async function extractNutritionFromText(description) {
+  if (!description || !description.trim()) {
+    throw new Error("A food description is required");
+  }
+
+  if (genAI) {
+    try {
+      const prompt = mealExtractionPrompt.replace("{{message}}", description.trim());
+      const responseText = await generateWithGemini({
+        model: MEAL_EXTRACTION_MODEL,
+        promptText: prompt,
+      });
+      const parsed = cleanJson(responseText);
+
+      if (parsed && typeof parsed.calories === "number") {
+        return {
+          foodName: parsed.foodName || description.trim(),
+          mealType: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"].includes(parsed.mealType) ? parsed.mealType : "LUNCH",
+          quantity: Number(parsed.quantity) || 1,
+          quantityUnit: parsed.quantityUnit || "serving",
+          calories: Math.max(0, Math.round(parsed.calories)),
+          protein: Math.max(0, Math.round((parsed.protein || 0) * 10) / 10),
+          carbs: Math.max(0, Math.round((parsed.carbs || 0) * 10) / 10),
+          fat: Math.max(0, Math.round((parsed.fat || 0) * 10) / 10),
+          fiber: Math.max(0, Math.round((parsed.fiber || 0) * 10) / 10),
+          sugar: Math.max(0, Math.round((parsed.sugar || 0) * 10) / 10),
+          sodium: Math.max(0, Math.round((parsed.sodium || 0) * 10) / 10),
+          micronutrients: parsed.micronutrients || {},
+          confidence: parsed.confidence || 0.85,
+        };
+      }
+    } catch (err) {
+      console.warn("Gemini text extraction encountered error, falling back to smart extractor:", err.message);
+    }
+  }
+
+  return fallbackNutritionEstimate(description);
 }
 
 /**
  * Handles conversational assistant interactions: natural language meal logging, goal checking, nutrition Q&A, and weekly summaries.
  */
-async function chatWithAssistant({ userId, message, history = [] }) {
+async function chatWithAssistant({
+  userId,
+  message,
+  history = [],
+  imageBase64,
+  imageMimeType,
+  pdfBase64,
+}) {
+  // An attached photo or PDF is handled before any text intent parsing —
+  // the chatbot automates the same "import a meal" flow the dedicated
+  // upload modals offer, so users never have to leave the chat to log from
+  // a photo or a bulk PDF diary export.
+  if (imageBase64) {
+    const analysis = await analyzeFoodImage({ imageBase64, mimeType: imageMimeType });
+
+    const createdMeal = await prisma.mealEntry.create({
+      data: {
+        userId,
+        mealType: analysis.mealType || "LUNCH",
+        foodName: analysis.foodName || "Photo Logged Meal",
+        quantity: Number(analysis.quantity) || 1,
+        quantityUnit: analysis.quantityUnit || "serving",
+        calories: analysis.calories,
+        protein: analysis.protein || 0,
+        carbs: analysis.carbs || 0,
+        fat: analysis.fat || 0,
+        fiber: analysis.fiber || 0,
+        sugar: analysis.sugar || 0,
+        sodium: analysis.sodium || 0,
+        micronutrients: analysis.micronutrients || {},
+        attachmentUrl: analysis.attachmentUrl,
+        attachmentType: analysis.attachmentUrl ? "IMAGE" : undefined,
+        consumedAt: new Date(),
+        source: "AI",
+      },
+    });
+
+    return {
+      action: "MEAL_LOGGED",
+      meal: createdMeal,
+      reply: `Analyzed your photo and logged ${createdMeal.foodName} (${createdMeal.calories} kcal, ${createdMeal.protein}g protein, ${createdMeal.carbs}g carbs, ${createdMeal.fat}g fat) to ${createdMeal.mealType.toLowerCase()}. Let me know if anything needs correcting.`,
+    };
+  }
+
+  if (pdfBase64) {
+    const result = await importMealsFromPdf({ userId, pdfBase64 });
+    return result;
+  }
+
   if (!message || !message.trim()) {
     throw new Error("Message is required");
   }
@@ -523,4 +627,5 @@ module.exports = {
   analyzeFoodImage,
   chatWithAssistant,
   importMealsFromPdf,
+  extractNutritionFromText,
 };

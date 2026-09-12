@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
-import type { Goal, MealEntry, MealType } from "@/lib/types/api";
+import type { AttachmentType, Goal, MealEntry, MealType } from "@/lib/types/api";
 
 export interface ExtractedNutrition {
   foodName: string;
@@ -15,14 +15,24 @@ export interface ExtractedNutrition {
   sodium?: number;
   micronutrients?: Record<string, number>;
   confidence?: number;
+  attachmentUrl?: string;
+  attachmentType?: AttachmentType;
 }
 
 export interface ChatResponse {
   success: boolean;
-  action: "CHAT" | "MEAL_LOGGED" | "GOAL_CHECK" | "GOAL_UPDATED" | "WEEKLY_SUMMARY";
+  action:
+    | "CHAT"
+    | "MEAL_LOGGED"
+    | "GOAL_CHECK"
+    | "GOAL_UPDATED"
+    | "WEEKLY_SUMMARY"
+    | "PDF_IMPORTED";
   reply: string;
   meal?: MealEntry;
   goal?: Goal;
+  importedCount?: number;
+  skippedCount?: number;
   summary?: {
     totalMealsLogged: number;
     totalWeekCalories: number;
@@ -38,9 +48,19 @@ export function analyzeImage(payload: { imageBase64: string; mimeType?: string }
   });
 }
 
+export function extractNutrition(payload: { description: string }) {
+  return apiFetch<{ success: true; data: ExtractedNutrition }>("/ai/extract-nutrition", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export function sendChatMessage(payload: {
   message: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  imageBase64?: string;
+  imageMimeType?: string;
+  pdfBase64?: string;
 }) {
   return apiFetch<ChatResponse>("/ai/chat", {
     method: "POST",

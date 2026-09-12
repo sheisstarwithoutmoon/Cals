@@ -27,7 +27,7 @@ export function MobileHeader() {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-stone-200/80 bg-[#eef7f2]/95 px-4 backdrop-blur-sm lg:hidden">
-      <BrandLogo size="sm" brandName="Cals" href="/dashboard" />
+      <BrandLogo size="sm" brandName="Cals" href="/" />
 
       <DropdownMenu>
         <DropdownMenuTrigger className="outline-none">

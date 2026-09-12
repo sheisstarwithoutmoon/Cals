@@ -17,6 +17,7 @@ import { MealListItem } from "@/components/meals/meal-list-item";
 import { MealPagination } from "@/components/meals/meal-pagination";
 import { ImportMealModal } from "@/components/meals/import-meal-modal";
 import { useMeals } from "@/hooks/use-meals";
+import type { ExtractedNutrition } from "@/lib/api/ai";
 import { formatDate } from "@/lib/format";
 import type { MealListFilters, MealType } from "@/lib/types/api";
 
@@ -30,6 +31,8 @@ export default function MealsPage() {
   const [filters, setFilters] = useState<MealFiltersState>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isLogFormOpen, setIsLogFormOpen] = useState(false);
+  const [prefillData, setPrefillData] = useState<ExtractedNutrition | null>(null);
 
   const apiFilters: MealListFilters = useMemo(
     () => ({
@@ -80,6 +83,12 @@ export default function MealsPage() {
                   <span>Log meal</span>
                 </Button>
               }
+              open={isLogFormOpen}
+              onOpenChange={(open) => {
+                setIsLogFormOpen(open);
+                if (!open) setPrefillData(null);
+              }}
+              prefillData={prefillData}
               onSaved={refetch}
             />
           </div>
@@ -90,6 +99,10 @@ export default function MealsPage() {
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         onImported={refetch}
+        onPrefillManualForm={(data) => {
+          setPrefillData(data);
+          setIsLogFormOpen(true);
+        }}
       />
 
       <MealFilters value={filters} onChange={handleFiltersChange} />

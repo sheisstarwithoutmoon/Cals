@@ -20,6 +20,11 @@ enum MealSource {
   PDF_IMPORT
 }
 
+enum AttachmentType {
+  IMAGE
+  PDF
+}
+
 enum ActivityLevel {
   SEDENTARY
   LIGHT
@@ -90,6 +95,9 @@ model MealEntry {
   sodium          Float?
 
   micronutrients  Json?
+
+  attachmentUrl   String?
+  attachmentType  AttachmentType?
 
   consumedAt      DateTime
   source          MealSource @default(MANUAL)

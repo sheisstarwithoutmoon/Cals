@@ -42,7 +42,7 @@ export function LottieAvocado({
           renderer: "svg",
           loop,
           autoplay,
-          path: "/walking_avacado.json",
+          path: "/avocado-workout.json",
         });
 
         animInstance.setSpeed(speed);

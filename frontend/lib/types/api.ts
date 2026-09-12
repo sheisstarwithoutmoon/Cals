@@ -13,6 +13,7 @@ export interface User {
 
 export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
 export type MealSource = "MANUAL" | "AI" | "PDF_IMPORT";
+export type AttachmentType = "IMAGE" | "PDF";
 
 export type ActivityLevel =
   | "SEDENTARY"
@@ -88,6 +89,8 @@ export interface MealEntry {
   sugar: number | null;
   sodium: number | null;
   micronutrients: Record<string, number> | null;
+  attachmentUrl: string | null;
+  attachmentType: AttachmentType | null;
   consumedAt: string;
   source: MealSource;
   createdAt: string;
@@ -107,6 +110,8 @@ export interface MealInput {
   sugar?: number;
   sodium?: number;
   micronutrients?: Record<string, number>;
+  attachmentUrl?: string;
+  attachmentType?: AttachmentType;
   consumedAt: string;
   source?: MealSource;
 }

@@ -1,7 +1,13 @@
 import { PencilIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import type { Goal } from "@/lib/types/api";
 
 interface GoalSummaryProps {
@@ -19,20 +25,22 @@ const ROWS: { key: keyof Goal; label: string; unit: string }[] = [
 
 export function GoalSummary({ goal, onEdit }: GoalSummaryProps) {
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+    <Card className="h-full flex flex-col">
+      <CardHeader>
         <CardTitle>Your daily goals</CardTitle>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Edit goals"
-          onClick={onEdit}
-        >
-          <PencilIcon className="size-4" />
-        </Button>
+        <CardAction>
+          <Button
+            type="button"
+            size="icon-sm"
+            aria-label="Edit goals"
+            onClick={onEdit}
+            className="rounded-full bg-emerald-700 text-white hover:bg-emerald-800"
+          >
+            <PencilIcon className="size-4" />
+          </Button>
+        </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         <dl className="divide-y divide-border">
           {ROWS.map((row) => {
             const value = goal[row.key];

@@ -1,4 +1,8 @@
-const { analyzeFoodImage, chatWithAssistant } = require("../services/ai.service");
+const {
+  analyzeFoodImage,
+  chatWithAssistant,
+  extractNutritionFromText,
+} = require("../services/ai.service");
 
 async function analyzeImage(req, res, next) {
   try {
@@ -22,14 +26,36 @@ async function analyzeImage(req, res, next) {
   }
 }
 
-async function chat(req, res, next) {
+async function extractNutrition(req, res, next) {
   try {
-    const { message, history } = req.body;
+    const { description } = req.body;
 
-    if (!message || !message.trim()) {
+    if (!description || !description.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Message is required",
+        message: "description is required",
+      });
+    }
+
+    const data = await extractNutritionFromText(description);
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function chat(req, res, next) {
+  try {
+    const { message, history, imageBase64, imageMimeType, pdfBase64 } = req.body;
+
+    if (!message?.trim() && !imageBase64 && !pdfBase64) {
+      return res.status(400).json({
+        success: false,
+        message: "Message, image, or PDF is required",
       });
     }
 
@@ -37,6 +63,9 @@ async function chat(req, res, next) {
       userId: req.user.id,
       message,
       history,
+      imageBase64,
+      imageMimeType,
+      pdfBase64,
     });
 
     res.json({
@@ -50,5 +79,6 @@ async function chat(req, res, next) {
 
 module.exports = {
   analyzeImage,
+  extractNutrition,
   chat,
 };
