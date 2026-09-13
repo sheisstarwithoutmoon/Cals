@@ -1,7 +1,7 @@
 import type { ZodIssue } from "@/lib/types/api";
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL;
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api";
 
 export class ApiError extends Error {
   status: number;
