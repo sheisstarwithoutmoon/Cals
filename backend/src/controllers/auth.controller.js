@@ -101,14 +101,6 @@ function startGoogleAuth(req, res, next) {
 
     setGoogleStateCookie(res, state);
 
-    console.log("[google-auth-debug] start", {
-      host: req.headers.host,
-      protocol: req.protocol,
-      forwardedProto: req.headers["x-forwarded-proto"],
-      nodeEnv: process.env.NODE_ENV,
-      stateIssued: state,
-    });
-
     const authorizationUrl = googleClient.generateAuthUrl({
       access_type: "offline",
       scope: ["openid", "email", "profile"],
@@ -149,17 +141,6 @@ async function googleCallback(req, res, next) {
     const code = getRawQueryParam(req, "code");
     const state = getRawQueryParam(req, "state");
     const savedState = req.cookies[GOOGLE_STATE_COOKIE];
-
-    console.log("[google-auth-debug] callback", {
-      host: req.headers.host,
-      protocol: req.protocol,
-      forwardedProto: req.headers["x-forwarded-proto"],
-      cookieHeaderPresent: Boolean(req.headers.cookie),
-      cookieHeader: req.headers.cookie,
-      parsedCookies: req.cookies,
-      stateFromQuery: state,
-      savedState,
-    });
 
     clearGoogleStateCookie(res);
 
