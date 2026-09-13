@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CameraIcon, ChevronRightIcon, FileTextIcon, XIcon } from "lucide-react";
 
 import { AiImageModal } from "@/components/meals/ai-image-modal";
@@ -28,6 +28,19 @@ export function ImportMealModal({
     setMode("choose");
     onClose();
   }
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -66,8 +79,14 @@ export function ImportMealModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4 backdrop-blur-xs">
-      <div className="relative w-full max-w-sm rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-4 animate-in fade-in duration-200"
+      onClick={handleClose}
+    >
+      <div
+        className="relative w-full max-w-sm rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           onClick={handleClose}
@@ -81,7 +100,7 @@ export function ImportMealModal({
           Import a meal
         </h2>
         <p className="mt-1 text-sm text-stone-500">
-          Snap a photo of your food or a nutrition label, or upload a PDF: we'll extract the details automatically.
+          Snap a photo of your food or a nutrition label, or upload a PDF: we&apos;ll extract the details automatically.
         </p>
 
         <div className="mt-5 space-y-2.5">

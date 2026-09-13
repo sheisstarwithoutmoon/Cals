@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import {
+  CameraIcon,
+  ChevronDownIcon,
   CoffeeIcon,
   CookieIcon,
-  FileTextIcon,
-  ImageIcon,
   MoonStarIcon,
   MoreVerticalIcon,
   PencilIcon,
@@ -65,9 +65,21 @@ export function MealListItem({ meal, onUpdated, onDeleted }: MealListItemProps) 
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const TypeIcon = MEAL_TYPE_ICONS[meal.mealType];
-  const hasAttachment = Boolean(meal.attachmentUrl && meal.attachmentType);
+  // Multi-item entries are stored as one comma-joined foodName (e.g. "2 eggs,
+  // toast, coffee") with combined macros, not a structured item list — this
+  // splits that string back out purely for the expandable per-item display.
+  const foodItems = meal.foodName
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const hasMultipleItems = foodItems.length > 1;
+  // Only photo attachments are worth a "View source" affordance — a
+  // PDF-imported entry's attachment is the whole multi-row diary export,
+  // not a document specific to this one meal, so it isn't shown here.
+  const hasAttachment = Boolean(meal.attachmentUrl && meal.attachmentType === "IMAGE");
 
   async function handleDelete() {
     setIsDeleting(true);
@@ -105,32 +117,70 @@ export function MealListItem({ meal, onUpdated, onDeleted }: MealListItemProps) 
       }`}
     >
       <div
-        className={`flex size-10 shrink-0 items-center justify-center rounded-full ${MEAL_TYPE_ICON_STYLES[meal.mealType]}`}
+        role={hasAttachment ? "button" : undefined}
+        tabIndex={hasAttachment ? 0 : undefined}
+        title={hasAttachment ? "Click to view meal photo" : undefined}
+        onClick={
+          hasAttachment
+            ? (e) => {
+                e.stopPropagation();
+                setIsPreviewOpen(true);
+              }
+            : undefined
+        }
+        className={`relative flex size-10 shrink-0 items-center justify-center rounded-full transition-all ${MEAL_TYPE_ICON_STYLES[meal.mealType]} ${
+          hasAttachment
+            ? "cursor-pointer ring-2 ring-emerald-500/30 hover:scale-105 hover:ring-emerald-500/60 active:scale-95 shadow-xs"
+            : ""
+        }`}
       >
         <TypeIcon className="size-4.5" />
+        {hasAttachment && (
+          <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-emerald-700 text-white shadow-xs">
+            <CameraIcon className="size-2.5" />
+          </span>
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="break-words text-sm font-medium text-foreground">
             {meal.foodName}
           </p>
           <Badge variant="secondary">{MEAL_TYPE_LABELS[meal.mealType]}</Badge>
-          {hasAttachment && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
-              {meal.attachmentType === "IMAGE" ? (
-                <ImageIcon className="size-3" />
-              ) : (
-                <FileTextIcon className="size-3" />
-              )}
-              View source
-            </span>
-          )}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {formatTime(meal.consumedAt)}
           {meal.quantity ? ` · ${formatNumber(meal.quantity)}${meal.quantityUnit ? ` ${meal.quantityUnit}` : ""}` : ""}
         </p>
+
+        {hasMultipleItems && (
+          <>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsExpanded((value) => !value);
+              }}
+              className="mt-1.5 flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-800"
+            >
+              <ChevronDownIcon
+                className={`size-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+              />
+              {isExpanded ? "Hide items" : `${foodItems.length} items in this meal`}
+            </button>
+
+            {isExpanded && (
+              <ul className="mt-1.5 space-y-1 border-l-2 border-border pl-3">
+                {foodItems.map((item, index) => (
+                  <li key={index} className="text-xs text-muted-foreground">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-4">

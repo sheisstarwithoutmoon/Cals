@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type ChangeEvent } from "react";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
 import {
   FileTextIcon,
   UploadCloudIcon,
@@ -10,6 +10,7 @@ import {
   AlertCircleIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ApiError } from "@/lib/api/client";
 import { importMealsFromPdf } from "@/lib/api/meals";
 import type { MealEntry } from "@/lib/types/api";
 
@@ -34,8 +35,6 @@ export function PdfImportModal({
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!isOpen) return null;
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -71,8 +70,12 @@ export function PdfImportModal({
         });
         onImportComplete();
       }
-    } catch (err: any) {
-      setError(err?.message || "Failed to parse PDF. Please ensure the PDF contains tabular meal entries.");
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Failed to parse PDF. Please ensure the PDF contains tabular meal entries."
+      );
     } finally {
       setIsImporting(false);
     }
@@ -87,9 +90,30 @@ export function PdfImportModal({
     onClose();
   }
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4 backdrop-blur-xs">
-      <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-xl sm:p-7">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-4 animate-in fade-in duration-200"
+      onClick={handleClose}
+    >
+      <div
+        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-2xl sm:p-7 animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-100 pb-4">
           <div className="flex items-center gap-2">

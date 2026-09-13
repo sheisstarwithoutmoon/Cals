@@ -23,10 +23,12 @@ export type ActivityLevel =
   | "VERY_ACTIVE";
 
 export type GoalType = "LOSE" | "MAINTAIN" | "GAIN";
+export type Gender = "MALE" | "FEMALE" | "OTHER";
 
 export interface OnboardingProfile {
   name: string;
   age: number | null;
+  gender: Gender | null;
   heightCm: number | null;
   currentWeight: number | null;
   activityLevel: ActivityLevel | null;
@@ -42,6 +44,7 @@ export interface OnboardingStatus {
 export interface OnboardingProfileInput {
   name: string;
   age: number;
+  gender: Gender;
   heightCm: number;
   currentWeight: number;
   activityLevel: ActivityLevel;

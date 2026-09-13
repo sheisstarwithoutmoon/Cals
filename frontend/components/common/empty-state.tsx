@@ -21,7 +21,7 @@ export function EmptyState({
     <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-stone-300/80 bg-stone-50/50 px-6 py-10 text-center">
       {showAvocado ? (
         <div className="mb-1">
-          <LottieAvocado width={120} height={120} speed={0.9} />
+          <LottieAvocado variant="walking" width={120} height={120} speed={0.95} />
         </div>
       ) : Icon ? (
         <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 shadow-2xs">

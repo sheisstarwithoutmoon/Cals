@@ -50,10 +50,10 @@ export function StepGoal({ initial, onBack, onSaved }: StepGoalProps) {
     <div className="space-y-4">
       <div>
         <h2 className="font-heading text-xl font-bold text-stone-900">
-          What's your goal?
+          What&apos;s your goal?
         </h2>
         <p className="mt-1 text-sm text-stone-500">
-          We'll use this to set your daily calorie target.
+          We&apos;ll use this to set your daily calorie target.
         </p>
       </div>
 

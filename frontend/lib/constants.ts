@@ -1,4 +1,4 @@
-import type { ActivityLevel, GoalType, MealType } from "@/lib/types/api";
+import type { ActivityLevel, Gender, GoalType, MealType } from "@/lib/types/api";
 
 export const MEAL_TYPES: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 
@@ -31,6 +31,14 @@ export const ACTIVITY_LEVEL_DESCRIPTIONS: Record<ActivityLevel, string> = {
   MODERATE: "Exercise about 3 to 5 days a week",
   ACTIVE: "Hard exercise 6 to 7 days a week",
   VERY_ACTIVE: "Hard training or a physically demanding job",
+};
+
+export const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER"];
+
+export const GENDER_LABELS: Record<Gender, string> = {
+  MALE: "Male",
+  FEMALE: "Female",
+  OTHER: "Other",
 };
 
 export const GOAL_TYPES: GoalType[] = ["LOSE", "MAINTAIN", "GAIN"];

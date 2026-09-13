@@ -11,6 +11,8 @@ interface LottieAvocadoProps {
   speed?: number;
   loop?: boolean;
   autoplay?: boolean;
+  variant?: "walking" | "workout";
+  path?: string;
 }
 
 export function LottieAvocado({
@@ -20,10 +22,15 @@ export function LottieAvocado({
   speed = 1,
   loop = true,
   autoplay = true,
+  variant = "walking",
+  path,
 }: LottieAvocadoProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+
+  const animationPath =
+    path || (variant === "workout" ? "/avocado-workout.json" : "/walking_avacado.json");
 
   useEffect(() => {
     let isMounted = true;
@@ -42,7 +49,7 @@ export function LottieAvocado({
           renderer: "svg",
           loop,
           autoplay,
-          path: "/avocado-workout.json",
+          path: animationPath,
         });
 
         animInstance.setSpeed(speed);
@@ -68,7 +75,7 @@ export function LottieAvocado({
         animInstance.destroy();
       }
     };
-  }, [loop, autoplay, speed]);
+  }, [loop, autoplay, speed, animationPath]);
 
   const style: CSSProperties = {};
   if (width !== undefined) style.width = typeof width === "number" ? `${width}px` : width;

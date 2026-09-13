@@ -4,6 +4,7 @@ const { calculateSuggestedTargets } = require("./nutrition-calculator.service");
 const PROFILE_SELECT = {
   name: true,
   age: true,
+  gender: true,
   heightCm: true,
   currentWeight: true,
   activityLevel: true,
@@ -12,6 +13,7 @@ const PROFILE_SELECT = {
 function hasCompletedProfile(user) {
   return (
     user.age != null &&
+    Boolean(user.gender) &&
     user.heightCm != null &&
     user.currentWeight != null &&
     Boolean(user.activityLevel)
@@ -44,6 +46,7 @@ async function getOnboardingStatus(userId) {
     profile: {
       name: user.name,
       age: user.age,
+      gender: user.gender,
       heightCm: user.heightCm,
       currentWeight: user.currentWeight,
       activityLevel: user.activityLevel,
@@ -60,6 +63,7 @@ async function saveProfile(userId, data) {
     data: {
       name: data.name,
       age: data.age,
+      gender: data.gender,
       heightCm: data.heightCm,
       currentWeight: data.currentWeight,
       activityLevel: data.activityLevel,

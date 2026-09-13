@@ -18,10 +18,6 @@ export function listMeals(filters: MealListFilters = {}) {
   });
 }
 
-export function getMeal(id: string) {
-  return apiFetch<{ success: true; meal: MealEntry }>(`/meals/${id}`);
-}
-
 export function createMeal(payload: MealInput) {
   return apiFetch<{ success: true; meal: MealEntry }>("/meals", {
     method: "POST",

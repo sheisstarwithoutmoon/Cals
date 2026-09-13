@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PlusIcon, UploadCloudIcon, UtensilsCrossedIcon } from "lucide-react";
+import { CameraIcon, PlusIcon, UtensilsCrossedIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,16 +69,15 @@ export default function MealsPage() {
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant="outline"
               onClick={() => setIsImportOpen(true)}
-              className="rounded-full border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+              className="rounded-full bg-emerald-700 hover:bg-emerald-800 text-white"
             >
-              <UploadCloudIcon className="size-4" />
-              <span>Import meal</span>
+              <CameraIcon className="size-4" />
+              <span>Scan food</span>
             </Button>
             <MealFormDialog
               trigger={
-                <Button className="rounded-full bg-emerald-700 hover:bg-emerald-800 text-white">
+                <Button variant="outline" className="rounded-full">
                   <PlusIcon className="size-4" />
                   <span>Log meal</span>
                 </Button>
@@ -123,10 +122,23 @@ export default function MealsPage() {
           title="No meals found"
           description="Try adjusting your filters, or log your first meal to see it here."
           action={
-            <MealFormDialog
-              trigger={<Button variant="outline">Log a meal</Button>}
-              onSaved={refetch}
-            />
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                onClick={() => setIsImportOpen(true)}
+                className="rounded-full bg-emerald-700 hover:bg-emerald-800 text-white"
+              >
+                <CameraIcon className="size-4" />
+                <span>Scan food</span>
+              </Button>
+              <MealFormDialog
+                trigger={
+                  <Button variant="outline" className="rounded-full">
+                    Log a meal
+                  </Button>
+                }
+                onSaved={refetch}
+              />
+            </div>
           }
         />
       )}

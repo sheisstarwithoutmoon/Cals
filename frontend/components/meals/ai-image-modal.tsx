@@ -9,12 +9,11 @@ import {
   CheckIcon,
   XIcon,
   FlameIcon,
-  ActivityIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { analyzeImage, type ExtractedNutrition } from "@/lib/api/ai";
+import { ApiError } from "@/lib/api/client";
 import { createMeal } from "@/lib/api/meals";
-import type { MealType } from "@/lib/types/api";
 
 interface AiImageModalProps {
   isOpen: boolean;
@@ -71,8 +70,10 @@ export function AiImageModal({
       } else {
         setError("Could not analyze nutritional details from this photo.");
       }
-    } catch (err: any) {
-      setError(err?.message || "Failed to analyze image. Please try again.");
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Failed to analyze image. Please try again."
+      );
     } finally {
       setIsAnalyzing(false);
     }
@@ -105,8 +106,8 @@ export function AiImageModal({
 
       onMealSaved();
       handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to save meal entry.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save meal entry.");
     } finally {
       setIsSaving(false);
     }
@@ -129,8 +130,14 @@ export function AiImageModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4 backdrop-blur-xs">
-      <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-xl sm:p-7">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-4 animate-in fade-in duration-200"
+      onClick={handleClose}
+    >
+      <div
+        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-2xl sm:p-7 animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-100 pb-4">
           <div className="flex items-center gap-2">

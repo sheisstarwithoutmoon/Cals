@@ -1,9 +1,9 @@
 import Image from "next/image";
 import {
   CameraIcon,
+  ChartLineIcon,
   MessageCircleIcon,
   TargetIcon,
-  TrendingUpIcon,
 } from "lucide-react";
 
 const FEATURES = [
@@ -23,7 +23,7 @@ const FEATURES = [
     description: "Daily calorie, macro and weight targets tailored to your plan.",
   },
   {
-    icon: TrendingUpIcon,
+    icon: ChartLineIcon,
     title: "See it add up",
     description: "Trends across calories, macros and micronutrients over time.",
   },
