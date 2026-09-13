@@ -8,6 +8,8 @@ const activityLevelSchema = z.enum([
   "VERY_ACTIVE",
 ]);
 
+const genderSchema = z.enum(["MALE", "FEMALE", "OTHER"]);
+
 const goalTypeSchema = z.enum(["LOSE", "MAINTAIN", "GAIN"]);
 
 const profileSchema = z.object({
@@ -22,6 +24,8 @@ const profileSchema = z.object({
     .int("Age must be a whole number")
     .min(10, "Age must be at least 10")
     .max(120, "Age must be at most 120"),
+
+  gender: genderSchema,
 
   heightCm: z
     .number()

@@ -19,8 +19,10 @@ import {
   ACTIVITY_LEVELS,
   ACTIVITY_LEVEL_DESCRIPTIONS,
   ACTIVITY_LEVEL_LABELS,
+  GENDERS,
+  GENDER_LABELS,
 } from "@/lib/constants";
-import type { ActivityLevel, OnboardingProfileInput } from "@/lib/types/api";
+import type { ActivityLevel, Gender, OnboardingProfileInput } from "@/lib/types/api";
 
 interface StepBasicInfoProps {
   initial: Partial<OnboardingProfileInput>;
@@ -30,6 +32,7 @@ interface StepBasicInfoProps {
 interface FormState {
   name: string;
   age: string;
+  gender: Gender | "";
   heightCm: string;
   currentWeight: string;
   activityLevel: ActivityLevel | "";
@@ -39,6 +42,7 @@ function toFormState(initial: Partial<OnboardingProfileInput>): FormState {
   return {
     name: initial.name ?? "",
     age: initial.age?.toString() ?? "",
+    gender: initial.gender ?? "",
     heightCm: initial.heightCm?.toString() ?? "",
     currentWeight: initial.currentWeight?.toString() ?? "",
     activityLevel: initial.activityLevel ?? "",
@@ -55,6 +59,10 @@ function validate(form: FormState) {
   const age = Number(form.age);
   if (!form.age.trim() || !Number.isInteger(age) || age < 10 || age > 120) {
     errors.age = "Enter an age between 10 and 120";
+  }
+
+  if (!form.gender) {
+    errors.gender = "Select your gender";
   }
 
   const heightCm = Number(form.heightCm);
@@ -96,6 +104,7 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
     const payload: OnboardingProfileInput = {
       name: form.name.trim(),
       age: Number(form.age),
+      gender: form.gender as Gender,
       heightCm: Number(form.heightCm),
       currentWeight: Number(form.currentWeight),
       activityLevel: form.activityLevel as ActivityLevel,
@@ -166,6 +175,36 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
         </div>
 
         <div className="space-y-1.5">
+          <Label htmlFor="ob-gender" className="text-xs font-bold text-stone-700">
+            Gender
+          </Label>
+          <Select
+            value={form.gender}
+            onValueChange={(value) => updateField("gender", value as Gender)}
+          >
+            <SelectTrigger id="ob-gender" className="w-full">
+              <SelectValue placeholder="Select gender">
+                {(value: Gender | "") =>
+                  value ? GENDER_LABELS[value] : "Select gender"
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {GENDERS.map((gender) => (
+                <SelectItem key={gender} value={gender}>
+                  {GENDER_LABELS[gender]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {fieldErrors.gender && (
+            <p className="text-xs text-rose-600">{fieldErrors.gender}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
           <Label htmlFor="ob-height" className="text-xs font-bold text-stone-700">
             Height (cm)
           </Label>
@@ -183,25 +222,25 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
             <p className="text-xs text-rose-600">{fieldErrors.heightCm}</p>
           )}
         </div>
-      </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="ob-weight" className="text-xs font-bold text-stone-700">
-          Current weight (kg)
-        </Label>
-        <Input
-          id="ob-weight"
-          type="number"
-          step="any"
-          min={0}
-          value={form.currentWeight}
-          onChange={(event) => updateField("currentWeight", event.target.value)}
-          aria-invalid={Boolean(fieldErrors.currentWeight)}
-          placeholder="e.g. 70"
-        />
-        {fieldErrors.currentWeight && (
-          <p className="text-xs text-rose-600">{fieldErrors.currentWeight}</p>
-        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="ob-weight" className="text-xs font-bold text-stone-700">
+            Current weight (kg)
+          </Label>
+          <Input
+            id="ob-weight"
+            type="number"
+            step="any"
+            min={0}
+            value={form.currentWeight}
+            onChange={(event) => updateField("currentWeight", event.target.value)}
+            aria-invalid={Boolean(fieldErrors.currentWeight)}
+            placeholder="e.g. 70"
+          />
+          {fieldErrors.currentWeight && (
+            <p className="text-xs text-rose-600">{fieldErrors.currentWeight}</p>
+          )}
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -215,7 +254,11 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
           }
         >
           <SelectTrigger id="ob-activity" className="w-full">
-            <SelectValue placeholder="Select your activity level" />
+            <SelectValue placeholder="Select your activity level">
+              {(value: ActivityLevel | "") =>
+                value ? ACTIVITY_LEVEL_LABELS[value] : "Select your activity level"
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent className="min-w-[min(100%,24rem)]">
             {ACTIVITY_LEVELS.map((level) => (

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { LayoutDashboardIcon } from "lucide-react";
 import { BrandLogo } from "@/components/common/brand-logo";
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 
 export function LandingNavbar() {

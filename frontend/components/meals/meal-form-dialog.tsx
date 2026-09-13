@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { NumberField } from "@/components/meals/number-field";
 import { extractNutrition, type ExtractedNutrition } from "@/lib/api/ai";
 import { ApiError } from "@/lib/api/client";
 import * as mealsApi from "@/lib/api/meals";
@@ -355,7 +356,9 @@ export function MealFormDialog({
                 }
               >
                 <SelectTrigger id="mealType" className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {(mealType: MealType) => MEAL_TYPE_LABELS[mealType]}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {MEAL_TYPES.map((type) => (
@@ -422,19 +425,12 @@ export function MealFormDialog({
           </Button>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="quantity">Quantity</Label>
-              <Input
-                id="quantity"
-                type="number"
-                step="any"
-                min={0}
-                value={form.quantity}
-                onChange={(event) =>
-                  updateField("quantity", event.target.value)
-                }
-              />
-            </div>
+            <NumberField
+              id="quantity"
+              label="Quantity"
+              value={form.quantity}
+              onChange={(value) => updateField("quantity", value)}
+            />
             <div className="space-y-1.5">
               <Label htmlFor="quantityUnit">Unit</Label>
               <Input
@@ -448,99 +444,56 @@ export function MealFormDialog({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="calories">Calories (kcal)</Label>
-            <Input
-              id="calories"
-              type="number"
-              step="any"
-              min={0}
-              value={form.calories}
-              onChange={(event) => updateField("calories", event.target.value)}
-              aria-invalid={Boolean(fieldErrors.calories)}
-              required
+          <NumberField
+            id="calories"
+            label="Calories (kcal)"
+            value={form.calories}
+            onChange={(value) => updateField("calories", value)}
+            required
+            invalid={Boolean(fieldErrors.calories)}
+            errorMessage={fieldErrors.calories}
+          />
+
+          <div className="grid grid-cols-3 gap-4">
+            <NumberField
+              id="protein"
+              label="Protein (g)"
+              value={form.protein}
+              onChange={(value) => updateField("protein", value)}
             />
-            {fieldErrors.calories && (
-              <p className="text-xs text-destructive">
-                {fieldErrors.calories}
-              </p>
-            )}
+            <NumberField
+              id="carbs"
+              label="Carbs (g)"
+              value={form.carbs}
+              onChange={(value) => updateField("carbs", value)}
+            />
+            <NumberField
+              id="fat"
+              label="Fat (g)"
+              value={form.fat}
+              onChange={(value) => updateField("fat", value)}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="protein">Protein (g)</Label>
-              <Input
-                id="protein"
-                type="number"
-                step="any"
-                min={0}
-                value={form.protein}
-                onChange={(event) =>
-                  updateField("protein", event.target.value)
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="carbs">Carbs (g)</Label>
-              <Input
-                id="carbs"
-                type="number"
-                step="any"
-                min={0}
-                value={form.carbs}
-                onChange={(event) => updateField("carbs", event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="fat">Fat (g)</Label>
-              <Input
-                id="fat"
-                type="number"
-                step="any"
-                min={0}
-                value={form.fat}
-                onChange={(event) => updateField("fat", event.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="fiber">Fiber (g)</Label>
-              <Input
-                id="fiber"
-                type="number"
-                step="any"
-                min={0}
-                value={form.fiber}
-                onChange={(event) => updateField("fiber", event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="sugar">Sugar (g)</Label>
-              <Input
-                id="sugar"
-                type="number"
-                step="any"
-                min={0}
-                value={form.sugar}
-                onChange={(event) => updateField("sugar", event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="sodium">Sodium (mg)</Label>
-              <Input
-                id="sodium"
-                type="number"
-                step="any"
-                min={0}
-                value={form.sodium}
-                onChange={(event) =>
-                  updateField("sodium", event.target.value)
-                }
-              />
-            </div>
+            <NumberField
+              id="fiber"
+              label="Fiber (g)"
+              value={form.fiber}
+              onChange={(value) => updateField("fiber", value)}
+            />
+            <NumberField
+              id="sugar"
+              label="Sugar (g)"
+              value={form.sugar}
+              onChange={(value) => updateField("sugar", value)}
+            />
+            <NumberField
+              id="sodium"
+              label="Sodium (mg)"
+              value={form.sodium}
+              onChange={(value) => updateField("sodium", value)}
+            />
           </div>
 
           <div className="space-y-3 rounded-xl border border-stone-200/80 bg-stone-50/50 p-4">
@@ -548,81 +501,46 @@ export function MealFormDialog({
               Micronutrients (optional)
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label htmlFor="vitaminA" className="text-[11px] text-stone-600">
-                  Vit A (mcg)
-                </Label>
-                <Input
-                  id="vitaminA"
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  className="h-9 text-xs"
-                  value={form.vitaminA}
-                  onChange={(event) => updateField("vitaminA", event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="vitaminC" className="text-[11px] text-stone-600">
-                  Vit C (mg)
-                </Label>
-                <Input
-                  id="vitaminC"
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  className="h-9 text-xs"
-                  value={form.vitaminC}
-                  onChange={(event) => updateField("vitaminC", event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="calcium" className="text-[11px] text-stone-600">
-                  Calcium (mg)
-                </Label>
-                <Input
-                  id="calcium"
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  className="h-9 text-xs"
-                  value={form.calcium}
-                  onChange={(event) => updateField("calcium", event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="iron" className="text-[11px] text-stone-600">
-                  Iron (mg)
-                </Label>
-                <Input
-                  id="iron"
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  className="h-9 text-xs"
-                  value={form.iron}
-                  onChange={(event) => updateField("iron", event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="potassium" className="text-[11px] text-stone-600">
-                  Potassium (mg)
-                </Label>
-                <Input
-                  id="potassium"
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  className="h-9 text-xs"
-                  value={form.potassium}
-                  onChange={(event) => updateField("potassium", event.target.value)}
-                />
-              </div>
+              <NumberField
+                compact
+                id="vitaminA"
+                label="Vit A (mcg)"
+                placeholder="0"
+                value={form.vitaminA}
+                onChange={(value) => updateField("vitaminA", value)}
+              />
+              <NumberField
+                compact
+                id="vitaminC"
+                label="Vit C (mg)"
+                placeholder="0"
+                value={form.vitaminC}
+                onChange={(value) => updateField("vitaminC", value)}
+              />
+              <NumberField
+                compact
+                id="calcium"
+                label="Calcium (mg)"
+                placeholder="0"
+                value={form.calcium}
+                onChange={(value) => updateField("calcium", value)}
+              />
+              <NumberField
+                compact
+                id="iron"
+                label="Iron (mg)"
+                placeholder="0"
+                value={form.iron}
+                onChange={(value) => updateField("iron", value)}
+              />
+              <NumberField
+                compact
+                id="potassium"
+                label="Potassium (mg)"
+                placeholder="0"
+                value={form.potassium}
+                onChange={(value) => updateField("potassium", value)}
+              />
             </div>
           </div>
 

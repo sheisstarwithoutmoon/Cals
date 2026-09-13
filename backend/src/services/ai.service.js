@@ -1,14 +1,21 @@
-const { GoogleGenAI } = require("@google/genai");
+const { GoogleGenAI, Type } = require("@google/genai");
 const prisma = require("../config/prisma");
-const { getMeals } = require("./meal.service");
+const { getMeals, createMeal } = require("./meal.service");
 const { getGoalByUserId, createOrUpdateGoal } = require("./goal.service");
 const { loadPrompt } = require("../utils/load-prompt");
 const { uploadAttachment } = require("./upload.service");
+const chatService = require("./chat.service");
 
 const imageNutritionPrompt = loadPrompt("image-nutrition.prompt.md");
 const mealExtractionPrompt = loadPrompt("meal-extraction.prompt.md");
+const pdfDiaryImportPrompt = loadPrompt("pdf-diary-import.prompt.md");
+// Only used by the no-API-key / error fallback path below — the main
+// conversational turn uses assistant-conversation.prompt.md instead.
 const nutritionQuestionPrompt = loadPrompt(
   "nutrition-question-answering.prompt.md"
+);
+const assistantConversationPrompt = loadPrompt(
+  "assistant-conversation.prompt.md"
 );
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -19,11 +26,40 @@ const VISION_MODEL = "gemini-3.5-flash-lite";
 const MEAL_EXTRACTION_MODEL = "gemini-3.5-flash-lite";
 const QUESTION_ANSWERING_MODEL = "gemini-3.5-flash-lite";
 const PDF_IMPORT_MODEL = "gemini-3.5-flash-lite";
+const CHAT_MODEL = "gemini-3.5-flash-lite";
 
 // Gemini's inline-data limit is ~20MB per request. Bigger PDFs need the
 // Files API (upload once, reference by URI) instead of base64 in the body.
 const MAX_INLINE_PDF_BYTES = 20 * 1024 * 1024;
 const VALID_MEAL_TYPES = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
+
+// A diary PDF row only ever has a date, not a time of day. These give each
+// meal type a sensible wall-clock time so same-day imports land in the
+// right order instead of all sharing one timestamp.
+const MEAL_TYPE_DEFAULT_TIME = {
+  BREAKFAST: "08:00:00",
+  LUNCH: "13:00:00",
+  SNACK: "16:00:00",
+  DINNER: "19:30:00",
+};
+
+/**
+ * Coerces a raw nutrition object (LLM output, image analysis, or a manual
+ * value) into the rounded, non-negative numeric shape every meal-creation
+ * path needs. Centralized so a future rounding/clamping rule change happens
+ * once instead of being retyped at each call site.
+ */
+function normalizeNutritionValues(raw) {
+  return {
+    calories: Math.max(0, Math.round(raw.calories)),
+    protein: Math.max(0, Math.round((raw.protein || 0) * 10) / 10),
+    carbs: Math.max(0, Math.round((raw.carbs || 0) * 10) / 10),
+    fat: Math.max(0, Math.round((raw.fat || 0) * 10) / 10),
+    fiber: Math.max(0, Math.round((raw.fiber || 0) * 10) / 10),
+    sugar: Math.max(0, Math.round((raw.sugar || 0) * 10) / 10),
+    sodium: Math.max(0, Math.round((raw.sodium || 0) * 10) / 10),
+  };
+}
 
 /**
  * Parses JSON safely from LLM text responses that might contain markdown fences.
@@ -127,7 +163,8 @@ const GOAL_FIELD_MAX = {
  * Parses a natural-language goal update like "set my daily calorie goal to
  * 1800" into a { field, value, unit } triple the Goal model understands.
  * Returns null if no number/field was found, or "out-of-range" if a field
- * was recognized but the number is outside a sane bound.
+ * was recognized but the number is outside a sane bound. Used only by the
+ * regex-based fallback chat path (no Gemini available).
  */
 function parseGoalUpdate(message) {
   const numberMatch = message.match(/(\d+(\.\d+)?)/);
@@ -162,33 +199,28 @@ async function generateWithGemini({ model, promptText, filePart }) {
 }
 
 /**
- * Coerces and validates one raw meal-entry object (from image analysis, PDF
- * import, or manual data) into the shape mealEntry.create/createMany expects.
- * Returns null if the entry is missing a usable calorie count, so a bulk
- * import can skip bad rows instead of failing the whole batch.
+ * Coerces and validates one raw meal-entry row from a PDF diary import into
+ * the shape mealEntry.create/createMany expects. Returns null (so the row
+ * is skipped and reported, not silently mis-dated) if it's missing a usable
+ * calorie count or a real date — a diary row with no readable date has no
+ * business being dated "today" just because that's when the import ran.
  */
-function normalizeMealEntry(raw, userId, attachmentUrl) {
+function normalizeMealEntry(raw, userId) {
   if (!raw || typeof raw.calories !== "number") return null;
+  if (!raw.date) return null;
 
-  const consumedAt = raw.date ? new Date(raw.date) : new Date();
+  const mealType = VALID_MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "LUNCH";
+  const consumedAt = new Date(`${raw.date}T${MEAL_TYPE_DEFAULT_TIME[mealType]}`);
   if (Number.isNaN(consumedAt.getTime())) return null;
 
   return {
     userId,
-    mealType: VALID_MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "LUNCH",
+    mealType,
     foodName: raw.foodName || "Imported Meal",
     quantity: Number(raw.quantity) || 1,
     quantityUnit: raw.quantityUnit || "serving",
-    calories: Math.max(0, Math.round(raw.calories)),
-    protein: Math.max(0, Math.round((raw.protein || 0) * 10) / 10),
-    carbs: Math.max(0, Math.round((raw.carbs || 0) * 10) / 10),
-    fat: Math.max(0, Math.round((raw.fat || 0) * 10) / 10),
-    fiber: Math.max(0, Math.round((raw.fiber || 0) * 10) / 10),
-    sugar: Math.max(0, Math.round((raw.sugar || 0) * 10) / 10),
-    sodium: Math.max(0, Math.round((raw.sodium || 0) * 10) / 10),
+    ...normalizeNutritionValues(raw),
     micronutrients: raw.micronutrients || {},
-    attachmentUrl: attachmentUrl || undefined,
-    attachmentType: attachmentUrl ? "PDF" : undefined,
     consumedAt,
     source: "PDF_IMPORT",
   };
@@ -218,8 +250,6 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
     throw new Error("PDF import requires the Gemini API to be configured (GEMINI_API_KEY missing).");
   }
 
-  const attachmentUrl = await uploadAttachment(pdfBase64, "cals/pdf-imports");
-
   const filePart = {
     inlineData: {
       data: base64Data,
@@ -229,13 +259,7 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
 
   const responseText = await generateWithGemini({
     model: PDF_IMPORT_MODEL,
-    promptText: mealExtractionPrompt.replace(
-      "{{message}}",
-      "Extract every food/meal row from the attached PDF as a JSON array. " +
-        "Each item must include foodName, mealType (BREAKFAST/LUNCH/DINNER/SNACK), " +
-        "quantity, quantityUnit, date (ISO 8601 if present in the PDF), calories, " +
-        "protein, carbs, fat, fiber, sugar, sodium. Return ONLY a JSON array, no prose."
-    ),
+    promptText: pdfDiaryImportPrompt,
     filePart,
   });
 
@@ -247,13 +271,13 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
   }
 
   const normalizedEntries = rawEntries
-    .map((entry) => normalizeMealEntry(entry, userId, attachmentUrl))
+    .map((entry) => normalizeMealEntry(entry, userId))
     .filter(Boolean);
 
   const skippedCount = rawEntries.length - normalizedEntries.length;
 
   if (!normalizedEntries.length) {
-    throw new Error("Found rows in the PDF, but none had a usable calorie value.");
+    throw new Error("Found rows in the PDF, but none had a usable date and calorie value.");
   }
 
   const created = await prisma.mealEntry.createMany({
@@ -313,16 +337,10 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
       if (parsed && typeof parsed.calories === "number") {
         return {
           foodName: parsed.foodName || "Identified Meal",
-          mealType: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"].includes(parsed.mealType) ? parsed.mealType : "LUNCH",
+          mealType: VALID_MEAL_TYPES.includes(parsed.mealType) ? parsed.mealType : "LUNCH",
           quantity: Number(parsed.quantity) || 1,
           quantityUnit: parsed.quantityUnit || "serving",
-          calories: Math.max(0, Math.round(parsed.calories)),
-          protein: Math.max(0, Math.round((parsed.protein || 0) * 10) / 10),
-          carbs: Math.max(0, Math.round((parsed.carbs || 0) * 10) / 10),
-          fat: Math.max(0, Math.round((parsed.fat || 0) * 10) / 10),
-          fiber: Math.max(0, Math.round((parsed.fiber || 0) * 10) / 10),
-          sugar: Math.max(0, Math.round((parsed.sugar || 0) * 10) / 10),
-          sodium: Math.max(0, Math.round((parsed.sodium || 0) * 10) / 10),
+          ...normalizeNutritionValues(parsed),
           micronutrients: parsed.micronutrients || {},
           confidence: parsed.confidence || 0.92,
           ...attachment,
@@ -359,16 +377,10 @@ async function extractNutritionFromText(description) {
       if (parsed && typeof parsed.calories === "number") {
         return {
           foodName: parsed.foodName || description.trim(),
-          mealType: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"].includes(parsed.mealType) ? parsed.mealType : "LUNCH",
+          mealType: VALID_MEAL_TYPES.includes(parsed.mealType) ? parsed.mealType : "LUNCH",
           quantity: Number(parsed.quantity) || 1,
           quantityUnit: parsed.quantityUnit || "serving",
-          calories: Math.max(0, Math.round(parsed.calories)),
-          protein: Math.max(0, Math.round((parsed.protein || 0) * 10) / 10),
-          carbs: Math.max(0, Math.round((parsed.carbs || 0) * 10) / 10),
-          fat: Math.max(0, Math.round((parsed.fat || 0) * 10) / 10),
-          fiber: Math.max(0, Math.round((parsed.fiber || 0) * 10) / 10),
-          sugar: Math.max(0, Math.round((parsed.sugar || 0) * 10) / 10),
-          sodium: Math.max(0, Math.round((parsed.sodium || 0) * 10) / 10),
+          ...normalizeNutritionValues(parsed),
           micronutrients: parsed.micronutrients || {},
           confidence: parsed.confidence || 0.85,
         };
@@ -382,87 +394,290 @@ async function extractNutritionFromText(description) {
 }
 
 /**
- * Handles conversational assistant interactions: natural language meal logging, goal checking, nutrition Q&A, and weekly summaries.
+ * Summarizes a window of meals for the "weekly summary" feature. Averages
+ * over the number of distinct calendar days actually present in the data
+ * (capped at 7) rather than a flat /7 — a user who only has 2 days of
+ * history shouldn't have their average diluted by 5 days of zeros.
  */
-async function chatWithAssistant({
-  userId,
-  message,
-  history = [],
-  imageBase64,
-  imageMimeType,
-  pdfBase64,
-}) {
-  // An attached photo or PDF is handled before any text intent parsing —
-  // the chatbot automates the same "import a meal" flow the dedicated
-  // upload modals offer, so users never have to leave the chat to log from
-  // a photo or a bulk PDF diary export.
-  if (imageBase64) {
-    const analysis = await analyzeFoodImage({ imageBase64, mimeType: imageMimeType });
+function computeWeeklySummary(weekMeals) {
+  const totalWeekCalories = weekMeals.reduce((s, m) => s + (m.calories || 0), 0);
+  const totalProtein = Math.round(weekMeals.reduce((s, m) => s + (m.protein || 0), 0));
+  const totalMealsLogged = weekMeals.length;
 
-    const createdMeal = await prisma.mealEntry.create({
-      data: {
-        userId,
-        mealType: analysis.mealType || "LUNCH",
-        foodName: analysis.foodName || "Photo Logged Meal",
-        quantity: Number(analysis.quantity) || 1,
-        quantityUnit: analysis.quantityUnit || "serving",
-        calories: analysis.calories,
-        protein: analysis.protein || 0,
-        carbs: analysis.carbs || 0,
-        fat: analysis.fat || 0,
-        fiber: analysis.fiber || 0,
-        sugar: analysis.sugar || 0,
-        sodium: analysis.sodium || 0,
-        micronutrients: analysis.micronutrients || {},
-        attachmentUrl: analysis.attachmentUrl,
-        attachmentType: analysis.attachmentUrl ? "IMAGE" : undefined,
-        consumedAt: new Date(),
-        source: "AI",
+  const distinctDays = new Set(
+    weekMeals.map((m) => new Date(m.consumedAt).toDateString())
+  ).size;
+  const daysToAverageOver = Math.min(Math.max(distinctDays, 1), 7);
+  const avgDailyCalories = Math.round(totalWeekCalories / daysToAverageOver);
+
+  return { totalMealsLogged, totalWeekCalories, avgDailyCalories, totalProtein };
+}
+
+// --- Conversational assistant (tool-calling) ---------------------------
+
+/**
+ * Function-calling tools exposed to the chat model. Logging a meal or
+ * changing a goal can ONLY happen by the model calling one of these — the
+ * model is instructed (see assistant-conversation.prompt.md) never to claim
+ * an action succeeded unless it actually invoked the matching tool, which is
+ * what stops it from replying "done!" without anything being saved.
+ */
+const chatToolDeclarations = [
+  {
+    name: "log_meal",
+    description:
+      "Log one or more food items as meal entries in the user's diary. This is the ONLY way to actually save a meal — use it whenever the user wants food they described (in this message or earlier in the conversation) recorded. Prefer combining items eaten together at the same time into a single entry with a combined foodName and summed nutrition; only use separate entries for genuinely separate meals.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        items: {
+          type: Type.ARRAY,
+          description: "One entry per distinct meal/food occasion to log.",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              foodName: {
+                type: Type.STRING,
+                description: "Concise name of the food, joining multiple items eaten together with ', '.",
+              },
+              mealType: {
+                type: Type.STRING,
+                enum: VALID_MEAL_TYPES,
+              },
+              quantity: { type: Type.NUMBER },
+              quantityUnit: { type: Type.STRING },
+              calories: { type: Type.NUMBER },
+              protein: { type: Type.NUMBER },
+              carbs: { type: Type.NUMBER },
+              fat: { type: Type.NUMBER },
+              fiber: { type: Type.NUMBER },
+              sugar: { type: Type.NUMBER },
+              sodium: { type: Type.NUMBER },
+            },
+            required: ["foodName", "mealType", "calories"],
+          },
+        },
       },
-    });
+      required: ["items"],
+    },
+  },
+  {
+    name: "update_goal",
+    description: "Update one of the user's daily nutrition targets or their target weight.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        field: {
+          type: Type.STRING,
+          enum: Object.keys(GOAL_FIELD_LABELS),
+        },
+        value: { type: Type.NUMBER },
+      },
+      required: ["field", "value"],
+    },
+  },
+  {
+    name: "get_weekly_summary",
+    description:
+      "Get the user's meal totals for the last 7 days (meals logged, total calories, average daily calories, total protein).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+    },
+  },
+];
+
+/**
+ * Executes one model-requested tool call against the real database and
+ * records what happened onto `ctx` so the caller can build the structured
+ * `action`/`meal`/`goal`/`summary` fields the frontend renders as cards.
+ */
+async function executeToolCall(userId, call, ctx) {
+  const args = call.args || {};
+
+  if (call.name === "log_meal") {
+    const items = Array.isArray(args.items) ? args.items : [];
+    const createdMeals = [];
+    const failedItems = [];
+
+    // Each item is saved independently — one bad/failing row (e.g. a DB
+    // hiccup) shouldn't discard meals that already saved successfully, and
+    // there's nothing to roll back since each createMeal is its own insert.
+    for (const raw of items) {
+      if (typeof raw.calories !== "number") {
+        failedItems.push({ foodName: raw?.foodName, error: "Missing a numeric calories value" });
+        continue;
+      }
+
+      try {
+        const meal = await createMeal(userId, {
+          mealType: VALID_MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "LUNCH",
+          foodName: raw.foodName || "Logged Meal",
+          quantity: Number(raw.quantity) || 1,
+          quantityUnit: raw.quantityUnit || "serving",
+          ...normalizeNutritionValues(raw),
+          consumedAt: new Date(),
+          source: "AI",
+        });
+
+        createdMeals.push(meal);
+      } catch (err) {
+        console.warn("Failed to save a log_meal item:", err.message);
+        failedItems.push({ foodName: raw.foodName, error: err.message });
+      }
+    }
+
+    if (!createdMeals.length) {
+      return { ok: false, error: "No meal items could be saved.", failedItems };
+    }
+
+    ctx.action = "MEAL_LOGGED";
+    ctx.meal = createdMeals[createdMeals.length - 1];
 
     return {
-      action: "MEAL_LOGGED",
-      meal: createdMeal,
-      reply: `Analyzed your photo and logged ${createdMeal.foodName} (${createdMeal.calories} kcal, ${createdMeal.protein}g protein, ${createdMeal.carbs}g carbs, ${createdMeal.fat}g fat) to ${createdMeal.mealType.toLowerCase()}. Let me know if anything needs correcting.`,
+      ok: true,
+      loggedCount: createdMeals.length,
+      meals: createdMeals.map((m) => ({
+        foodName: m.foodName,
+        mealType: m.mealType,
+        calories: m.calories,
+        protein: m.protein,
+        carbs: m.carbs,
+        fat: m.fat,
+      })),
+      ...(failedItems.length ? { failedItems } : {}),
     };
   }
 
-  if (pdfBase64) {
-    const result = await importMealsFromPdf({ userId, pdfBase64 });
-    return result;
+  if (call.name === "update_goal") {
+    const field = args.field;
+    const value = Number(args.value);
+
+    if (!GOAL_FIELD_LABELS[field] || !Number.isFinite(value) || value <= 0 || value > GOAL_FIELD_MAX[field]) {
+      return { ok: false, error: "Invalid field or an out-of-range value for that field." };
+    }
+
+    const updatedGoal = await createOrUpdateGoal(userId, { [field]: value });
+    ctx.action = "GOAL_UPDATED";
+    ctx.goal = updatedGoal;
+
+    return { ok: true, goal: updatedGoal };
   }
 
-  if (!message || !message.trim()) {
-    throw new Error("Message is required");
+  if (call.name === "get_weekly_summary") {
+    const summary = computeWeeklySummary(ctx.weekMeals || []);
+    ctx.action = "WEEKLY_SUMMARY";
+    ctx.summary = summary;
+
+    return { ok: true, summary };
   }
 
-  const trimmed = message.trim();
-  const lower = trimmed.toLowerCase();
+  return { ok: false, error: `Unknown tool "${call.name}"` };
+}
 
-  // 1. Fetch user context (Goal + Today's Meals + Last 7 Days Meals)
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+/**
+ * Runs one turn of the tool-calling conversation: sends the recent chat
+ * history plus the new message to Gemini, executes any tool calls it
+ * requests against the real database, and feeds the results back for a
+ * final natural-language reply. This is what lets a user describe food in
+ * one message and say "log that" in a later one — the model reads the
+ * actual prior turns instead of only ever seeing the latest message.
+ */
+async function runChatTurn({
+  userId,
+  trimmed,
+  priorHistory,
+  goal,
+  todayCalories,
+  todayProtein,
+  todayCarbs,
+  todayFat,
+  dailyCalorieGoal,
+  remainingCalories,
+  weekMeals,
+}) {
+  const systemInstruction = assistantConversationPrompt
+    .replace("{{dailyCalorieGoal}}", String(dailyCalorieGoal))
+    .replace("{{dailyProteinGoal}}", String(goal?.dailyProtein ?? "not set"))
+    .replace("{{dailyCarbsGoal}}", String(goal?.dailyCarbs ?? "not set"))
+    .replace("{{dailyFatGoal}}", String(goal?.dailyFat ?? "not set"))
+    .replace("{{todayCalories}}", String(todayCalories))
+    .replace("{{todayProtein}}", String(todayProtein))
+    .replace("{{todayCarbs}}", String(todayCarbs))
+    .replace("{{todayFat}}", String(todayFat))
+    .replace("{{remainingCalories}}", String(remainingCalories));
 
-  const [goal, todayMealsResult, weekMealsResult] = await Promise.all([
-    getGoalByUserId(userId),
-    getMeals(userId, { page: 1, limit: 100, startDate: startOfToday, endDate: endOfToday }),
-    getMeals(userId, { page: 1, limit: 200, startDate: sevenDaysAgo, endDate: endOfToday }),
-  ]);
+  const contents = priorHistory.map((entry) => ({
+    role: entry.role === "ASSISTANT" ? "model" : "user",
+    parts: [{ text: entry.content }],
+  }));
+  contents.push({ role: "user", parts: [{ text: trimmed }] });
 
-  const todayMeals = todayMealsResult.meals || [];
-  const todayCalories = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
-  const todayProtein = todayMeals.reduce((sum, m) => sum + (m.protein || 0), 0);
-  const todayCarbs = todayMeals.reduce((sum, m) => sum + (m.carbs || 0), 0);
-  const todayFat = todayMeals.reduce((sum, m) => sum + (m.fat || 0), 0);
+  const config = {
+    systemInstruction,
+    tools: [{ functionDeclarations: chatToolDeclarations }],
+  };
 
-  const dailyCalorieGoal = goal?.dailyCalories || 2000;
-  const remainingCalories = Math.max(0, dailyCalorieGoal - todayCalories);
+  const ctx = { weekMeals };
+  let response;
 
-  // Check if user is asking to LOG a meal directly
+  // Up to 3 rounds so the model can chain a tool call, see the result, and
+  // (rarely) call another before giving its final reply.
+  for (let round = 0; round < 3; round += 1) {
+    response = await genAI.models.generateContent({
+      model: CHAT_MODEL,
+      contents,
+      config,
+    });
+
+    const calls = response.functionCalls;
+    if (!calls || !calls.length) break;
+
+    const modelContent = response.candidates?.[0]?.content ?? {
+      role: "model",
+      parts: calls.map((call) => ({ functionCall: call })),
+    };
+    contents.push(modelContent);
+
+    const responseParts = [];
+    for (const call of calls) {
+      const result = await executeToolCall(userId, call, ctx);
+      responseParts.push({
+        functionResponse: { name: call.name, response: result },
+      });
+    }
+    contents.push({ role: "user", parts: responseParts });
+  }
+
+  const reply = (response?.text || "").trim() || "Done.";
+
+  return {
+    action: ctx.action || "CHAT",
+    reply,
+    meal: ctx.meal,
+    goal: ctx.goal,
+    summary: ctx.summary,
+  };
+}
+
+/**
+ * Regex/keyword-based chat handling used only when Gemini is unavailable
+ * (missing API key, or the tool-calling turn above throws). It has no
+ * memory of earlier turns — it's a degraded offline mode, not the primary
+ * conversational path.
+ */
+async function runFallbackChat({
+  trimmed,
+  lower,
+  userId,
+  todayCalories,
+  todayProtein,
+  todayCarbs,
+  todayFat,
+  dailyCalorieGoal,
+  remainingCalories,
+  weekMealsResult,
+}) {
   const isLoggingIntent =
     /^(i ate|i had|log|add|record|just ate|ate|having|consumed)\b/i.test(lower) ||
     lower.includes("for breakfast") ||
@@ -486,38 +701,23 @@ async function chatWithAssistant({
           mealDetails = {
             ...mealDetails,
             ...parsedData,
-            mealType: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"].includes(parsedData.mealType) ? parsedData.mealType : mealDetails.mealType,
+            mealType: VALID_MEAL_TYPES.includes(parsedData.mealType) ? parsedData.mealType : mealDetails.mealType,
           };
-        } else {
-          console.warn(
-            "Gemini meal-extraction response didn't match the expected schema, using fallback estimate. Raw response:",
-            responseText
-          );
         }
       } catch (err) {
         console.warn("AI parser error, used fallback:", err.message);
       }
     }
 
-    // Create the meal entry in the database
-    const createdMeal = await prisma.mealEntry.create({
-      data: {
-        userId,
-        mealType: mealDetails.mealType || "LUNCH",
-        foodName: mealDetails.foodName || "Logged Meal",
-        quantity: Number(mealDetails.quantity) || 1,
-        quantityUnit: mealDetails.quantityUnit || "serving",
-        calories: Math.max(0, Math.round(mealDetails.calories)),
-        protein: Math.max(0, Math.round((mealDetails.protein || 0) * 10) / 10),
-        carbs: Math.max(0, Math.round((mealDetails.carbs || 0) * 10) / 10),
-        fat: Math.max(0, Math.round((mealDetails.fat || 0) * 10) / 10),
-        fiber: Math.max(0, Math.round((mealDetails.fiber || 0) * 10) / 10),
-        sugar: Math.max(0, Math.round((mealDetails.sugar || 0) * 10) / 10),
-        sodium: Math.max(0, Math.round((mealDetails.sodium || 0) * 10) / 10),
-        micronutrients: mealDetails.micronutrients || {},
-        consumedAt: new Date(),
-        source: "AI",
-      },
+    const createdMeal = await createMeal(userId, {
+      mealType: mealDetails.mealType || "LUNCH",
+      foodName: mealDetails.foodName || "Logged Meal",
+      quantity: Number(mealDetails.quantity) || 1,
+      quantityUnit: mealDetails.quantityUnit || "serving",
+      ...normalizeNutritionValues(mealDetails),
+      micronutrients: mealDetails.micronutrients || {},
+      consumedAt: new Date(),
+      source: "AI",
     });
 
     const newTodayCalories = todayCalories + createdMeal.calories;
@@ -530,7 +730,6 @@ async function chatWithAssistant({
     };
   }
 
-  // Check if user wants to set or update a goal target
   const isGoalUpdateIntent =
     /^(set|update|change)\b/i.test(lower) && /(goal|target)/i.test(lower);
 
@@ -563,27 +762,16 @@ async function chatWithAssistant({
     };
   }
 
-  // Check if user is asking for weekly summary
   if (lower.includes("summary") || lower.includes("weekly report") || lower.includes("week report") || lower.includes("how did i do")) {
-    const weekMeals = weekMealsResult.meals || [];
-    const totalWeekCalories = weekMeals.reduce((s, m) => s + (m.calories || 0), 0);
-    const avgDailyCalories = Math.round(totalWeekCalories / 7);
-    const totalProtein = Math.round(weekMeals.reduce((s, m) => s + (m.protein || 0), 0));
-    const totalMealsLogged = weekMeals.length;
+    const summary = computeWeeklySummary(weekMealsResult.meals || []);
 
     return {
       action: "WEEKLY_SUMMARY",
-      summary: {
-        totalMealsLogged,
-        totalWeekCalories,
-        avgDailyCalories,
-        totalProtein,
-      },
-      reply: `Here is your 7-day nutrition summary: You logged ${totalMealsLogged} meals totaling ${totalWeekCalories} kcal (average ~${avgDailyCalories} kcal/day). Total protein reached ${totalProtein}g. You are maintaining consistent daily tracking habits.`,
+      summary,
+      reply: `Here is your 7-day nutrition summary: You logged ${summary.totalMealsLogged} meals totaling ${summary.totalWeekCalories} kcal (average ~${summary.avgDailyCalories} kcal/day). Total protein reached ${summary.totalProtein}g. You are maintaining consistent daily tracking habits.`,
     };
   }
 
-  // Check if user is asking about goals / remaining calories
   if (lower.includes("goal") || lower.includes("how much left") || lower.includes("calories left") || lower.includes("remaining")) {
     return {
       action: "GOAL_CHECK",
@@ -591,7 +779,6 @@ async function chatWithAssistant({
     };
   }
 
-  // General Q&A / Nutritional advice with context
   if (genAI) {
     try {
       const prompt = nutritionQuestionPrompt
@@ -621,6 +808,155 @@ async function chatWithAssistant({
     action: "CHAT",
     reply: `To stay within your daily target of ${dailyCalorieGoal} kcal, focus on balanced whole foods with lean proteins, complex carbohydrates, and high fiber. You have ${remainingCalories} kcal remaining for today.`,
   };
+}
+
+function buildResultMetadata(result) {
+  const metadata = {};
+  if (result.meal) metadata.meal = result.meal;
+  if (result.goal) metadata.goal = result.goal;
+  if (result.summary) metadata.summary = result.summary;
+  if (typeof result.importedCount === "number") metadata.importedCount = result.importedCount;
+  if (typeof result.skippedCount === "number") metadata.skippedCount = result.skippedCount;
+  return Object.keys(metadata).length ? metadata : null;
+}
+
+async function persistExchange(userId, userText, result) {
+  await chatService.appendMessage(userId, { role: "USER", content: userText });
+  await chatService.appendMessage(userId, {
+    role: "ASSISTANT",
+    content: result.reply,
+    action: result.action,
+    metadata: buildResultMetadata(result),
+  });
+}
+
+/**
+ * Handles conversational assistant interactions: natural language meal logging, goal checking, nutrition Q&A, and weekly summaries.
+ */
+async function chatWithAssistant({
+  userId,
+  message,
+  imageBase64,
+  imageMimeType,
+  pdfBase64,
+}) {
+  // An attached photo or PDF is handled before any text intent parsing —
+  // the chatbot automates the same "import a meal" flow the dedicated
+  // upload modals offer, so users never have to leave the chat to log from
+  // a photo or a bulk PDF diary export.
+  if (imageBase64) {
+    const analysis = await analyzeFoodImage({ imageBase64, mimeType: imageMimeType });
+
+    const createdMeal = await createMeal(userId, {
+      mealType: analysis.mealType || "LUNCH",
+      foodName: analysis.foodName || "Photo Logged Meal",
+      quantity: Number(analysis.quantity) || 1,
+      quantityUnit: analysis.quantityUnit || "serving",
+      calories: analysis.calories,
+      protein: analysis.protein || 0,
+      carbs: analysis.carbs || 0,
+      fat: analysis.fat || 0,
+      fiber: analysis.fiber || 0,
+      sugar: analysis.sugar || 0,
+      sodium: analysis.sodium || 0,
+      micronutrients: analysis.micronutrients || {},
+      attachmentUrl: analysis.attachmentUrl,
+      attachmentType: analysis.attachmentUrl ? "IMAGE" : undefined,
+      consumedAt: new Date(),
+      source: "AI",
+    });
+
+    const result = {
+      action: "MEAL_LOGGED",
+      meal: createdMeal,
+      reply: `Analyzed your photo and logged ${createdMeal.foodName} (${createdMeal.calories} kcal, ${createdMeal.protein}g protein, ${createdMeal.carbs}g carbs, ${createdMeal.fat}g fat) to ${createdMeal.mealType.toLowerCase()}. Let me know if anything needs correcting.`,
+    };
+
+    await persistExchange(userId, message?.trim() || "Sent a food photo", result);
+    return result;
+  }
+
+  if (pdfBase64) {
+    const result = await importMealsFromPdf({ userId, pdfBase64 });
+    await persistExchange(userId, message?.trim() || "Sent a PDF diary export", result);
+    return result;
+  }
+
+  if (!message || !message.trim()) {
+    throw new Error("Message is required");
+  }
+
+  const trimmed = message.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Fetch user context (Goal + Today's Meals + Last 7 Days Meals + recent
+  // chat turns) so both the tool-calling path and the fallback path can
+  // ground their replies in real numbers instead of guessing.
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  // Capped at 100/200 rather than paginated through in full — a personal
+  // tracker's single-day and 7-day windows stay well under that in
+  // practice, so this trades strict completeness for one round trip per
+  // chat turn. Revisit with real pagination if that assumption ever breaks.
+  const [goal, todayMealsResult, weekMealsResult, priorHistory] = await Promise.all([
+    getGoalByUserId(userId),
+    getMeals(userId, { page: 1, limit: 100, startDate: startOfToday, endDate: endOfToday }),
+    getMeals(userId, { page: 1, limit: 200, startDate: sevenDaysAgo, endDate: endOfToday }),
+    chatService.getRecentHistory(userId),
+  ]);
+
+  const todayMeals = todayMealsResult.meals || [];
+  const todayCalories = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
+  const todayProtein = todayMeals.reduce((sum, m) => sum + (m.protein || 0), 0);
+  const todayCarbs = todayMeals.reduce((sum, m) => sum + (m.carbs || 0), 0);
+  const todayFat = todayMeals.reduce((sum, m) => sum + (m.fat || 0), 0);
+
+  const dailyCalorieGoal = goal?.dailyCalories || 2000;
+  const remainingCalories = Math.max(0, dailyCalorieGoal - todayCalories);
+
+  let result;
+
+  if (genAI) {
+    try {
+      result = await runChatTurn({
+        userId,
+        trimmed,
+        priorHistory,
+        goal,
+        todayCalories,
+        todayProtein,
+        todayCarbs,
+        todayFat,
+        dailyCalorieGoal,
+        remainingCalories,
+        weekMeals: weekMealsResult.meals || [],
+      });
+    } catch (err) {
+      console.warn("Gemini chat turn error, using fallback:", err.message);
+    }
+  }
+
+  if (!result) {
+    result = await runFallbackChat({
+      trimmed,
+      lower,
+      userId,
+      todayCalories,
+      todayProtein,
+      todayCarbs,
+      todayFat,
+      dailyCalorieGoal,
+      remainingCalories,
+      weekMealsResult,
+    });
+  }
+
+  await persistExchange(userId, trimmed, result);
+  return result;
 }
 
 module.exports = {

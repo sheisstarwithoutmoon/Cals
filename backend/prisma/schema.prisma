@@ -7,6 +7,79 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id                  String         @id @default(cuid())
+  name                String
+  email               String         @unique
+  passwordHash        String?
+  googleId            String?        @unique
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  age                 Int?
+  gender              Gender?
+  heightCm            Float?
+  currentWeight       Float?
+  activityLevel       ActivityLevel?
+  goalType            GoalType?
+  onboardingCompleted Boolean        @default(false)
+  chatMessages        ChatMessage[]
+  goal                Goal?
+  mealEntries         MealEntry[]
+}
+
+model Goal {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  dailyCalories Float?
+  dailyProtein  Float?
+  dailyCarbs    Float?
+  dailyFat      Float?
+  targetWeight  Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MealEntry {
+  id             String          @id @default(cuid())
+  userId         String
+  mealType       MealType
+  foodName       String
+  quantity       Float?
+  quantityUnit   String?
+  calories       Float
+  protein        Float?
+  carbs          Float?
+  fat            Float?
+  fiber          Float?
+  sugar          Float?
+  sodium         Float?
+  micronutrients Json?
+  consumedAt     DateTime
+  source         MealSource      @default(MANUAL)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  attachmentUrl  String?
+  attachmentType AttachmentType?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+  @@index([userId, mealType])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      ChatRole
+  content   String
+  action    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
 enum MealType {
   BREAKFAST
   LUNCH
@@ -25,6 +98,12 @@ enum AttachmentType {
   PDF
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
 enum ActivityLevel {
   SEDENTARY
   LIGHT
@@ -39,74 +118,7 @@ enum GoalType {
   GAIN
 }
 
-model User {
-  id           String       @id @default(cuid())
-  name         String
-  email        String       @unique
-  passwordHash String?
-  googleId     String?      @unique
-
-  age                 Int?
-  heightCm            Float?
-  currentWeight       Float?
-  activityLevel       ActivityLevel?
-  goalType            GoalType?
-  onboardingCompleted Boolean        @default(false)
-
-  goal         Goal?
-  mealEntries  MealEntry[]
-
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-}
-
-model Goal {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-
-  dailyCalories  Float?
-  dailyProtein   Float?
-  dailyCarbs     Float?
-  dailyFat       Float?
-  targetWeight   Float?
-
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
-model MealEntry {
-  id              String     @id @default(cuid())
-  userId          String
-
-  mealType        MealType
-  foodName        String
-  quantity        Float?
-  quantityUnit    String?
-
-  calories        Float
-  protein         Float?
-  carbs           Float?
-  fat             Float?
-
-  fiber           Float?
-  sugar           Float?
-  sodium          Float?
-
-  micronutrients  Json?
-
-  attachmentUrl   String?
-  attachmentType  AttachmentType?
-
-  consumedAt      DateTime
-  source          MealSource @default(MANUAL)
-
-  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-
-  @@index([userId, consumedAt])
-  @@index([userId, mealType])
+enum ChatRole {
+  USER
+  ASSISTANT
 }

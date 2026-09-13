@@ -13,12 +13,12 @@ export function HeroSection() {
 
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-12 lg:gap-8">
-          {/* Left Column: Walking Avocado Alone (No hardcoded metrics / cards) */}
           <div className="flex items-center justify-center lg:col-span-6">
             <div className="relative flex items-center justify-center p-4">
               <div className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-emerald-200/30 blur-2xl transform scale-110" />
               <LottieAvocado
                 speed={1.1}
+                variant="workout"
                 className="h-52 w-52 sm:h-64 sm:w-64 md:h-80 md:w-80 lg:h-[400px] lg:w-[400px]"
               />
             </div>

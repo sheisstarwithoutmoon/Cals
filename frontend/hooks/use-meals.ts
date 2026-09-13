@@ -38,9 +38,12 @@ export function useMeals(filters: MealListFilters) {
       setMeals(result.meals);
       setPagination(result.pagination);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Failed to load meals."
-      );
+      if (err instanceof ApiError) {
+        const fieldMessage = Object.values(err.fieldErrors)[0];
+        setError(fieldMessage || err.message);
+      } else {
+        setError("Failed to load meals.");
+      }
     } finally {
       setIsLoading(false);
     }

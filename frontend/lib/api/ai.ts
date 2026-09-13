@@ -57,7 +57,6 @@ export function extractNutrition(payload: { description: string }) {
 
 export function sendChatMessage(payload: {
   message: string;
-  history?: Array<{ role: "user" | "assistant"; content: string }>;
   imageBase64?: string;
   imageMimeType?: string;
   pdfBase64?: string;
@@ -66,4 +65,21 @@ export function sendChatMessage(payload: {
     method: "POST",
     body: payload,
   });
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  sender: "user" | "assistant";
+  text: string;
+  action?: ChatResponse["action"];
+  meal?: MealEntry;
+  goal?: Goal;
+  summary?: ChatResponse["summary"];
+  importedCount?: number;
+  skippedCount?: number;
+  createdAt: string;
+}
+
+export function getChatHistory() {
+  return apiFetch<{ success: true; data: ChatHistoryMessage[] }>("/ai/chat/history");
 }

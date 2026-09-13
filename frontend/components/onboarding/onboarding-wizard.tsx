@@ -33,6 +33,7 @@ export function OnboardingWizard() {
     setProfile({
       name: status.profile.name,
       age: status.profile.age ?? undefined,
+      gender: status.profile.gender ?? undefined,
       heightCm: status.profile.heightCm ?? undefined,
       currentWeight: status.profile.currentWeight ?? undefined,
       activityLevel: status.profile.activityLevel ?? undefined,

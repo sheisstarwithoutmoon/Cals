@@ -29,13 +29,3 @@ export function toDateInputValue(value: string | Date) {
   const local = new Date(date.getTime() - offset * 60 * 1000);
   return local.toISOString().slice(0, 16);
 }
-
-export function isSameDay(a: string | Date, b: string | Date) {
-  const dateA = typeof a === "string" ? new Date(a) : a;
-  const dateB = typeof b === "string" ? new Date(b) : b;
-  return (
-    dateA.getFullYear() === dateB.getFullYear() &&
-    dateA.getMonth() === dateB.getMonth() &&
-    dateA.getDate() === dateB.getDate()
-  );
-}

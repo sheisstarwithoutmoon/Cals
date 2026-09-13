@@ -3,6 +3,7 @@ const {
   chatWithAssistant,
   extractNutritionFromText,
 } = require("../services/ai.service");
+const chatService = require("../services/chat.service");
 
 async function analyzeImage(req, res, next) {
   try {
@@ -50,7 +51,7 @@ async function extractNutrition(req, res, next) {
 
 async function chat(req, res, next) {
   try {
-    const { message, history, imageBase64, imageMimeType, pdfBase64 } = req.body;
+    const { message, imageBase64, imageMimeType, pdfBase64 } = req.body;
 
     if (!message?.trim() && !imageBase64 && !pdfBase64) {
       return res.status(400).json({
@@ -62,7 +63,6 @@ async function chat(req, res, next) {
     const response = await chatWithAssistant({
       userId: req.user.id,
       message,
-      history,
       imageBase64,
       imageMimeType,
       pdfBase64,
@@ -77,8 +77,33 @@ async function chat(req, res, next) {
   }
 }
 
+async function getChatHistory(req, res, next) {
+  try {
+    const messages = await chatService.getChatHistory(req.user.id);
+
+    res.json({
+      success: true,
+      data: messages.map((entry) => ({
+        id: entry.id,
+        sender: entry.role === "ASSISTANT" ? "assistant" : "user",
+        text: entry.content,
+        action: entry.action || undefined,
+        meal: entry.metadata?.meal,
+        goal: entry.metadata?.goal,
+        summary: entry.metadata?.summary,
+        importedCount: entry.metadata?.importedCount,
+        skippedCount: entry.metadata?.skippedCount,
+        createdAt: entry.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   analyzeImage,
   extractNutrition,
   chat,
+  getChatHistory,
 };

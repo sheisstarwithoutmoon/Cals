@@ -44,7 +44,11 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
             }
           >
             <SelectTrigger id="filter-type" className="w-full">
-              <SelectValue />
+              <SelectValue>
+                {(mealType: MealType | "ALL") =>
+                  mealType === "ALL" ? "All meals" : MEAL_TYPE_LABELS[mealType]
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All meals</SelectItem>
@@ -66,6 +70,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
             type="date"
             className="w-full"
             value={value.startDate}
+            max={value.endDate || undefined}
             onChange={(event) =>
               onChange({ ...value, startDate: event.target.value })
             }
@@ -81,6 +86,7 @@ export function MealFilters({ value, onChange }: MealFiltersProps) {
             type="date"
             className="w-full"
             value={value.endDate}
+            min={value.startDate || undefined}
             onChange={(event) =>
               onChange({ ...value, endDate: event.target.value })
             }

@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import {
   CheckCircle2Icon,
   FileTextIcon,
@@ -15,9 +22,31 @@ import {
 } from "lucide-react";
 
 import { ApiError } from "@/lib/api/client";
-import { sendChatMessage, type ChatResponse } from "@/lib/api/ai";
+import { sendChatMessage, getChatHistory, type ChatResponse } from "@/lib/api/ai";
 import { notifyDataChanged } from "@/lib/events";
 import type { Goal, MealEntry } from "@/lib/types/api";
+
+// Minimal shape of the (non-standard, vendor-prefixed) Web Speech API used
+// for voice input — not part of TypeScript's DOM lib, so we declare only
+// what this component actually touches instead of reaching for `any`.
+interface SpeechRecognitionResult {
+  0: { transcript: string };
+}
+
+interface SpeechRecognitionEvent {
+  results: ArrayLike<SpeechRecognitionResult>;
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
 
 interface PendingFile {
   dataUrl: string;
@@ -85,8 +114,8 @@ export function AiChatDrawer({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -94,10 +123,64 @@ export function AiChatDrawer({
     }
   }, [messages, isOpen]);
 
+  // Grows the composer with its content instead of scrolling internally,
+  // capped at MAX_TEXTAREA_HEIGHT so a long paste doesn't push the send
+  // button and quick-prompt chips off screen.
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const MAX_TEXTAREA_HEIGHT = 128;
+    textarea.style.height = "auto";
+    const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
+  }, [inputValue]);
+
+  // Loads once per mount (the drawer stays mounted behind the FAB, so this
+  // also survives closing/reopening the panel) — otherwise every page
+  // refresh would silently wipe the conversation since it only ever lived
+  // in local React state.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await getChatHistory();
+        if (cancelled || response.data.length === 0) return;
+
+        setMessages(
+          response.data.map((entry) => ({
+            id: entry.id,
+            sender: entry.sender,
+            text: entry.text,
+            action: entry.action,
+            meal: entry.meal,
+            goal: entry.goal,
+            summary: entry.summary,
+            importedCount: entry.importedCount,
+            skippedCount: entry.skippedCount,
+          }))
+        );
+      } catch {
+        // Keep the default welcome message if history can't be loaded.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const windowWithSpeechRecognition = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionInstance;
+      webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+    };
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      windowWithSpeechRecognition.SpeechRecognition ??
+      windowWithSpeechRecognition.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     setVoiceSupported(true);
@@ -106,21 +189,41 @@ export function AiChatDrawer({
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
+        .map((result) => result[0].transcript)
         .join(" ");
       setInputValue((prev) => (prev ? `${prev} ${transcript}` : transcript));
     };
-    recognition.onerror = () => setIsRecording(false);
+    recognition.onerror = (e) => {
+      console.warn("Speech recognition error", e);
+      setIsRecording(false);
+    };
     recognition.onend = () => setIsRecording(false);
 
     recognitionRef.current = recognition;
 
     return () => {
-      recognition.stop();
+      try {
+        recognition.stop();
+      } catch {
+        // ignore
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -128,11 +231,20 @@ export function AiChatDrawer({
     if (!recognitionRef.current) return;
 
     if (isRecording) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
       setIsRecording(false);
     } else {
-      recognitionRef.current.start();
-      setIsRecording(true);
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.warn("Could not start speech recognition", err);
+        setIsRecording(false);
+      }
     }
   }
 
@@ -168,14 +280,8 @@ export function AiChatDrawer({
     setIsLoading(true);
 
     try {
-      const history = messages.map((message) => ({
-        role: message.sender,
-        content: message.text,
-      }));
-
       const response = await sendChatMessage({
         message: text || (file?.kind === "IMAGE" ? "Log this meal from the photo" : "Import this PDF"),
-        history,
         imageBase64: file?.kind === "IMAGE" ? file.dataUrl : undefined,
         imageMimeType: file?.kind === "IMAGE" ? file.mimeType : undefined,
         pdfBase64: file?.kind === "PDF" ? file.dataUrl : undefined,
@@ -225,9 +331,24 @@ export function AiChatDrawer({
     handleSend();
   }
 
+  function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-stone-900/30 backdrop-blur-xs">
-      <div className="relative flex h-full w-full max-w-md flex-col border-l border-stone-200 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* Backdrop overlay: pure dark backdrop without glitchy backdrop-filter */}
+      <div
+        className="fixed inset-0 bg-stone-900/40 transition-opacity duration-300 select-none animate-in fade-in"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Drawer panel */}
+      <div className="fixed inset-y-0 right-0 z-10 flex h-full w-full max-w-md flex-col border-l border-stone-200 bg-white shadow-2xl transition-transform duration-300 animate-in slide-in-from-right">
         <div className="flex items-center justify-between bg-linear-to-br from-emerald-700 to-emerald-800 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white ring-1 ring-white/20">
@@ -459,7 +580,7 @@ export function AiChatDrawer({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
+          <form onSubmit={handleSubmit} className="flex items-end gap-1.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -498,13 +619,15 @@ export function AiChatDrawer({
               </button>
             )}
 
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
+              rows={1}
               value={inputValue}
               onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={handleTextareaKeyDown}
               placeholder={isRecording ? "Listening..." : "Ask something or log a meal"}
               disabled={isLoading}
-              className="flex-1 rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-xs text-stone-900 outline-none placeholder:text-stone-400 focus:border-emerald-600 focus:bg-white sm:text-sm"
+              className="max-h-32 flex-1 resize-none overflow-y-hidden rounded-3xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-xs leading-relaxed text-stone-900 outline-none placeholder:text-stone-400 focus:border-emerald-600 focus:bg-white sm:text-sm"
             />
 
             <button

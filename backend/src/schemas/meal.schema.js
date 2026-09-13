@@ -107,7 +107,7 @@ const mealQuerySchema = z.object({
     ctx.addIssue({
       code: "custom",
       path: ["startDate"],
-      message: "startDate must be before endDate",
+      message: "The \"From\" date must be before the \"To\" date.",
     });
   }
 });
