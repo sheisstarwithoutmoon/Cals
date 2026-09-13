@@ -11,6 +11,8 @@ const onboardingRoutes = require("./src/routes/onboarding.routes");
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: frontendUrl,
