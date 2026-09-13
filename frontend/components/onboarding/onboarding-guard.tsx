@@ -22,7 +22,7 @@ export function OnboardingGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading || !user || user.onboardingCompleted) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#eef7f2]">
+      <div className="flex min-h-screen items-center justify-center">
         <Loader2Icon className="size-8 animate-spin text-emerald-700" />
       </div>
     );

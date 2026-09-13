@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { InfoIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { BarChart3Icon, InfoIcon } from "lucide-react";
 
+import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/common/empty-state";
 import { CalorieTrendChart } from "@/components/reports/calorie-trend-chart";
 import { GoalVsActualChart } from "@/components/reports/goal-vs-actual-chart";
 import { MacroBreakdownChart } from "@/components/reports/macro-breakdown-chart";
@@ -14,50 +16,110 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMeals } from "@/hooks/use-meals";
 import {
   buildDailyTotals,
-  dateRangeForLastDays,
   sumMeals,
   sumMicronutrients,
 } from "@/lib/nutrition";
-import type { Goal } from "@/lib/types/api";
+import type { Goal, MealEntry } from "@/lib/types/api";
 
 interface DashboardReportsProps {
   goal: Goal | null;
+  refreshKey?: number | string;
 }
 
-export function DashboardReports({ goal }: DashboardReportsProps) {
+export function DashboardReports({ goal, refreshKey }: DashboardReportsProps) {
   const [range, setRange] = useState<ReportRange>(7);
-  const { startDate, endDate } = useMemo(
-    () => dateRangeForLastDays(range),
-    [range]
-  );
+  const [hasAutoSelectedRange, setHasAutoSelectedRange] = useState(false);
 
-  const { meals, isLoading } = useMeals({ startDate, endDate, limit: 100 });
+  // Fetch recent meals (up to 100) once without restrictive date filters.
+  // This loads much faster and enables instant, zero-latency switching between 7d, 14d, 30d.
+  const { meals: allMeals, isLoading, refetch } = useMeals({ limit: 100 });
+
+  useEffect(() => {
+    if (refreshKey !== undefined) {
+      refetch();
+    }
+  }, [refreshKey, refetch]);
+
+  // Helper to filter meals within N days from today
+  const filterMealsForDays = (mealsList: MealEntry[], days: number) => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (days - 1));
+    cutoff.setHours(0, 0, 0, 0);
+    return mealsList.filter((m) => new Date(m.consumedAt) >= cutoff);
+  };
+
+  // Smart range detection: If user has no meals in the last 7 days, but has meals in 14d
+  // (e.g. entries on 5th Sept) or 30d, automatically select the range that has data!
+  useEffect(() => {
+    if (hasAutoSelectedRange || isLoading || allMeals.length === 0) return;
+
+    const in7d = filterMealsForDays(allMeals, 7);
+    const in14d = filterMealsForDays(allMeals, 14);
+    const in30d = filterMealsForDays(allMeals, 30);
+
+    if (in7d.length === 0) {
+      if (in14d.length > 0) {
+        setRange(14);
+      } else if (in30d.length > 0) {
+        setRange(30);
+      }
+    }
+    setHasAutoSelectedRange(true);
+  }, [allMeals, isLoading, hasAutoSelectedRange]);
+
+  // Active meals filtered by currently selected range
+  const activeMeals = useMemo(
+    () => filterMealsForDays(allMeals, range),
+    [allMeals, range]
+  );
 
   const dailyTotals = useMemo(
-    () => buildDailyTotals(meals, range),
-    [meals, range]
+    () => buildDailyTotals(activeMeals, range),
+    [activeMeals, range]
   );
-  const rangeTotals = useMemo(() => sumMeals(meals), [meals]);
-  const micronutrientTotals = useMemo(() => sumMicronutrients(meals), [meals]);
+
+  const rangeTotals = useMemo(() => sumMeals(activeMeals), [activeMeals]);
+  const micronutrientTotals = useMemo(
+    () => sumMicronutrients(activeMeals),
+    [activeMeals]
+  );
+
+  const hasData = activeMeals.length > 0;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-64 w-full rounded-xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-heading text-lg font-bold text-stone-900">
-          Reports
+        <h2 className="font-heading text-lg font-bold text-foreground">
+          Nutrition reports
         </h2>
         <RangeTabs value={range} onChange={setRange} />
       </div>
 
-      {isLoading ? (
-        <div className="grid gap-6 sm:grid-cols-2">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-72 w-full rounded-xl" />
-          ))}
-        </div>
+      {!hasData ? (
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            <EmptyState
+              icon={BarChart3Icon}
+              title={`No report data for last ${range} days`}
+              description={
+                allMeals.length > 0
+                  ? `You have meals logged outside this ${range}-day window. Select 14d or 30d above to view older entries.`
+                  : "Log meals over a few days to see your calorie trends, macro splits, and micronutrient breakdowns here."
+              }
+            />
+          </CardContent>
+        </Card>
       ) : (
         <>
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid items-stretch gap-6 lg:grid-cols-2">
             <CalorieTrendChart
               data={dailyTotals}
               goalCalories={goal?.dailyCalories}

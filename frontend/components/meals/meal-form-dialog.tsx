@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { FileTextIcon, Loader2Icon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -158,6 +158,46 @@ function toOptionalNumber(value: string) {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+/** Per-unit-quantity nutrition snapshot: the basis quantity changes multiply against. */
+interface BaseNutrition {
+  quantity: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
+}
+
+const SCALED_NUTRITION_KEYS = [
+  "calories",
+  "protein",
+  "carbs",
+  "fat",
+  "fiber",
+  "sugar",
+  "sodium",
+] as const;
+
+function captureBaseNutrition(form: FormState): BaseNutrition {
+  const quantity = Number(form.quantity);
+  return {
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    calories: Number(form.calories) || 0,
+    protein: Number(form.protein) || 0,
+    carbs: Number(form.carbs) || 0,
+    fat: Number(form.fat) || 0,
+    fiber: Number(form.fiber) || 0,
+    sugar: Number(form.sugar) || 0,
+    sodium: Number(form.sodium) || 0,
+  };
+}
+
+function roundTo1(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
 export function MealFormDialog({
   meal,
   prefillData,
@@ -179,10 +219,13 @@ export function MealFormDialog({
   const [isEstimating, setIsEstimating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const baseNutritionRef = useRef<BaseNutrition | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setForm(buildInitialState(meal, defaultConsumedAt, prefillData));
+      const initial = buildInitialState(meal, defaultConsumedAt, prefillData);
+      setForm(initial);
+      baseNutritionRef.current = captureBaseNutrition(initial);
       setFormError(null);
       setFieldErrors({});
     }
@@ -196,6 +239,46 @@ export function MealFormDialog({
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /**
+   * Quantity is a live multiplier: scales calories/protein/carbs/fat/fiber/
+   * sugar/sodium from the last captured per-quantity base, rather than
+   * leaving totals frozen at a now-stale quantity.
+   */
+  function handleQuantityChange(value: string) {
+    const base = baseNutritionRef.current;
+    const nextQuantity = Number(value);
+
+    if (!base || !Number.isFinite(nextQuantity) || nextQuantity <= 0) {
+      updateField("quantity", value);
+      return;
+    }
+
+    const ratio = nextQuantity / base.quantity;
+    setForm((prev) => ({
+      ...prev,
+      quantity: value,
+      calories: String(Math.round(base.calories * ratio)),
+      protein: String(roundTo1(base.protein * ratio)),
+      carbs: String(roundTo1(base.carbs * ratio)),
+      fat: String(roundTo1(base.fat * ratio)),
+      fiber: String(roundTo1(base.fiber * ratio)),
+      sugar: String(roundTo1(base.sugar * ratio)),
+      sodium: String(roundTo1(base.sodium * ratio)),
+    }));
+  }
+
+  /** Editing a nutrition value directly re-bases future quantity scaling on it. */
+  function updateNutritionField(
+    key: (typeof SCALED_NUTRITION_KEYS)[number],
+    value: string
+  ) {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      baseNutritionRef.current = captureBaseNutrition(next);
+      return next;
+    });
   }
 
   async function handleEstimateWithAi() {
@@ -212,7 +295,8 @@ export function MealFormDialog({
       const data = res.data;
       const micro = data.micronutrients ?? {};
 
-      setForm((prev) => ({
+      setForm((prev) => {
+        const next = {
         ...prev,
         mealType: data.mealType ?? prev.mealType,
         quantity: data.quantity != null ? String(data.quantity) : prev.quantity,
@@ -229,7 +313,10 @@ export function MealFormDialog({
         calcium: micro["Calcium (mg)"]?.toString() ?? prev.calcium,
         iron: micro["Iron (mg)"]?.toString() ?? prev.iron,
         potassium: micro["Potassium (mg)"]?.toString() ?? prev.potassium,
-      }));
+        };
+        baseNutritionRef.current = captureBaseNutrition(next);
+        return next;
+      });
 
       toast.success("Filled in nutrition with AI — review before saving.");
     } catch (error) {
@@ -301,7 +388,7 @@ export function MealFormDialog({
       <DialogContent className="max-h-[calc(100vh-3rem)] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-lg">
         <DialogHeader className="gap-1.5 border-b border-border/70 px-6 py-5">
           <DialogTitle className="text-lg">
-            {isEditing ? "Edit meal" : "Log a meal"}
+            {isEditing ? "Edit meal" : "Log meal"}
           </DialogTitle>
           <DialogDescription>
             {isEditing
@@ -429,7 +516,7 @@ export function MealFormDialog({
               id="quantity"
               label="Quantity"
               value={form.quantity}
-              onChange={(value) => updateField("quantity", value)}
+              onChange={handleQuantityChange}
             />
             <div className="space-y-1.5">
               <Label htmlFor="quantityUnit">Unit</Label>
@@ -448,7 +535,7 @@ export function MealFormDialog({
             id="calories"
             label="Calories (kcal)"
             value={form.calories}
-            onChange={(value) => updateField("calories", value)}
+            onChange={(value) => updateNutritionField("calories", value)}
             required
             invalid={Boolean(fieldErrors.calories)}
             errorMessage={fieldErrors.calories}
@@ -459,19 +546,19 @@ export function MealFormDialog({
               id="protein"
               label="Protein (g)"
               value={form.protein}
-              onChange={(value) => updateField("protein", value)}
+              onChange={(value) => updateNutritionField("protein", value)}
             />
             <NumberField
               id="carbs"
               label="Carbs (g)"
               value={form.carbs}
-              onChange={(value) => updateField("carbs", value)}
+              onChange={(value) => updateNutritionField("carbs", value)}
             />
             <NumberField
               id="fat"
               label="Fat (g)"
               value={form.fat}
-              onChange={(value) => updateField("fat", value)}
+              onChange={(value) => updateNutritionField("fat", value)}
             />
           </div>
 
@@ -480,24 +567,24 @@ export function MealFormDialog({
               id="fiber"
               label="Fiber (g)"
               value={form.fiber}
-              onChange={(value) => updateField("fiber", value)}
+              onChange={(value) => updateNutritionField("fiber", value)}
             />
             <NumberField
               id="sugar"
               label="Sugar (g)"
               value={form.sugar}
-              onChange={(value) => updateField("sugar", value)}
+              onChange={(value) => updateNutritionField("sugar", value)}
             />
             <NumberField
               id="sodium"
               label="Sodium (mg)"
               value={form.sodium}
-              onChange={(value) => updateField("sodium", value)}
+              onChange={(value) => updateNutritionField("sodium", value)}
             />
           </div>
 
-          <div className="space-y-3 rounded-xl border border-stone-200/80 bg-stone-50/50 p-4">
-            <p className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
+          <div className="space-y-3 rounded-xl border border-border bg-muted/50 p-4">
+            <p className="text-xs font-bold text-muted-foreground">
               Micronutrients (optional)
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

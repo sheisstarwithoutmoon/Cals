@@ -54,46 +54,46 @@
 }
 
 :root {
-  --background: #eef7f2;
-  --foreground: #14281d;
+  --background: #ffffff;
+  --foreground: #142119;
   --card: #ffffff;
-  --card-foreground: #14281d;
+  --card-foreground: #142119;
   --popover: #ffffff;
-  --popover-foreground: #14281d;
-  --primary: #15803d;
+  --popover-foreground: #142119;
+  --primary: #2f6d4f;
   --primary-foreground: #ffffff;
-  --secondary: #e2f0e6;
-  --secondary-foreground: #1b3d2b;
-  --muted: #e6f2eb;
-  --muted-foreground: #55695b;
-  --accent: #d8eee0;
-  --accent-foreground: #14532d;
-  --destructive: oklch(0.58 0.21 27);
-  --border: #d4e6db;
-  --input: #cfdfd5;
-  --ring: #15803d;
-  --chart-1: #15803d;
+  --secondary: #e7f0ea;
+  --secondary-foreground: #142119;
+  --muted: #ecf3ee;
+  --muted-foreground: #5a6660;
+  --accent: #e7f0ea;
+  --accent-foreground: #2f6d4f;
+  --destructive: #c1402e;
+  --border: rgba(20, 33, 25, 0.08);
+  --input: rgba(20, 33, 25, 0.12);
+  --ring: #2f6d4f;
+  --chart-1: #2f6d4f;
   --chart-2: #2563eb;
   --chart-3: #ca8a04;
-  --chart-4: #dc2626;
+  --chart-4: #c1402e;
   --chart-5: #059669;
-  --radius: 0.875rem;
+  --radius: 1rem;
 
-  /* Custom Bento Pastel Tokens matching reference design */
-  --forest: #14532d;
+  /* Custom Bento Pastel Tokens */
+  --forest: #2f6d4f;
   --pastel-mint: #d2f0de;
-  --pastel-butter: #fbf2b7;
+  --pastel-butter: #e8f5ed;
   --pastel-sky: #c9eaf2;
   --pastel-lilac: #e4e6fc;
 
-  --sidebar: #e7f3ec;
-  --sidebar-foreground: #14281d;
-  --sidebar-primary: #15803d;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #142119;
+  --sidebar-primary: #2f6d4f;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #d8eee0;
-  --sidebar-accent-foreground: #14532d;
-  --sidebar-border: #d4e6db;
-  --sidebar-ring: #15803d;
+  --sidebar-accent: #e7f0ea;
+  --sidebar-accent-foreground: #2f6d4f;
+  --sidebar-border: rgba(20, 33, 25, 0.08);
+  --sidebar-ring: #2f6d4f;
 }
 
 .dark {
@@ -135,10 +135,20 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: linear-gradient(160deg, #e4f1e8 0%, #f1f8f4 50%, #e8f4ed 100%)
+      fixed;
   }
   html {
     @apply font-sans;
+  }
+
+  /* Consistent popup overlay: clean darkening with NO blur */
+  [data-slot="dialog-overlay"],
+  [data-slot="alert-dialog-overlay"] {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
   input[type="number"] {
@@ -205,4 +215,47 @@
 
 .animate-scan-label {
   animation: scan-label 3.6s ease-in-out infinite;
+}
+
+/* Modern slim scrollbar for all scrollable containers */
+*::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: rgba(47, 109, 79, 0.25);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(47, 109, 79, 0.45);
+}
+
+*::-webkit-scrollbar-button,
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+*::-webkit-scrollbar-corner,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox & standards */
+*,
+html,
+body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(47, 109, 79, 0.25) transparent;
 }

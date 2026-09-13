@@ -47,6 +47,34 @@ function buildUrl(path: string, query?: RequestOptions["query"]) {
  * attaches the backend's HTTP-only `auth_token` cookie. The token is
  * never read or stored by frontend JavaScript.
  */
+function sanitizeErrorMessage(message: string, status: number): string {
+  if (status >= 500) {
+    return "Unable to connect to the service. Please try again in a moment.";
+  }
+
+  const lower = message.toLowerCase();
+  const hasLeak = [
+    "prisma",
+    "invocation",
+    "database",
+    "neon.tech",
+    "postgres",
+    "findunique",
+    "findmany",
+    "can't reach",
+    "error:",
+    "stack",
+    "\\src\\",
+    "/src/",
+  ].some((term) => lower.includes(term));
+
+  if (hasLeak) {
+    return "Unable to complete request right now. Please try again later.";
+  }
+
+  return message;
+}
+
 export async function apiFetch<T>(
   path: string,
   { method = "GET", body, query }: RequestOptions = {}
@@ -73,8 +101,11 @@ export async function apiFetch<T>(
   const data = isJson ? await response.json().catch(() => null) : null;
 
   if (!response.ok) {
+    const rawMessage = data?.message ?? "Something went wrong. Please try again.";
+    const safeMessage = sanitizeErrorMessage(rawMessage, response.status);
+
     throw new ApiError(
-      data?.message ?? "Something went wrong. Please try again.",
+      safeMessage,
       response.status,
       data?.errors
     );

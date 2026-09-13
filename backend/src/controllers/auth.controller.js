@@ -10,6 +10,7 @@ const {
   loginUser,
   getUserById,
   loginOrCreateGoogleUser,
+  checkUserEmailExists,
 } = require("../services/auth.service");
 
 const {
@@ -200,6 +201,23 @@ async function googleCallback(req, res, next) {
   }
 }
 
+async function checkEmail(req, res, next) {
+  try {
+    const email = (req.query.email || req.body?.email || "").toString().trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const exists = await checkUserEmailExists(email);
+    res.json({
+      success: true,
+      exists,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -207,4 +225,5 @@ module.exports = {
   getCurrentUser,
   startGoogleAuth,
   googleCallback,
+  checkEmail,
 };

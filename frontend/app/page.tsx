@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen flex flex-col bg-linear-to-br from-emerald-100 via-[#eef7f2] to-[#eef7f2] text-stone-900 selection:bg-emerald-200 selection:text-emerald-950">
+    <div className="min-h-screen flex flex-col text-foreground selection:bg-secondary selection:text-primary">
       <LandingNavbar />
       <main className="flex-1 flex flex-col">
         <HeroSection />

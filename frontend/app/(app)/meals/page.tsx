@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CameraIcon, PlusIcon, UtensilsCrossedIcon } from "lucide-react";
+import { CameraIcon, FileTextIcon, PlusIcon, UtensilsCrossedIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,10 +12,11 @@ import {
   MealFilters,
   type MealFiltersState,
 } from "@/components/meals/meal-filters";
+import { AiImageModal } from "@/components/meals/ai-image-modal";
 import { MealFormDialog } from "@/components/meals/meal-form-dialog";
 import { MealListItem } from "@/components/meals/meal-list-item";
 import { MealPagination } from "@/components/meals/meal-pagination";
-import { ImportMealModal } from "@/components/meals/import-meal-modal";
+import { PdfImportModal } from "@/components/meals/pdf-import-modal";
 import { useMeals } from "@/hooks/use-meals";
 import type { ExtractedNutrition } from "@/lib/api/ai";
 import { formatDate } from "@/lib/format";
@@ -30,7 +31,8 @@ const DEFAULT_FILTERS: MealFiltersState = {
 export default function MealsPage() {
   const [filters, setFilters] = useState<MealFiltersState>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
-  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isScanOpen, setIsScanOpen] = useState(false);
+  const [isPdfImportOpen, setIsPdfImportOpen] = useState(false);
   const [isLogFormOpen, setIsLogFormOpen] = useState(false);
   const [prefillData, setPrefillData] = useState<ExtractedNutrition | null>(null);
 
@@ -68,16 +70,9 @@ export default function MealsPage() {
         description="Log and review everything you've eaten."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              onClick={() => setIsImportOpen(true)}
-              className="rounded-full bg-emerald-700 hover:bg-emerald-800 text-white"
-            >
-              <CameraIcon className="size-4" />
-              <span>Scan food</span>
-            </Button>
             <MealFormDialog
               trigger={
-                <Button variant="outline" className="rounded-full">
+                <Button className="rounded-full">
                   <PlusIcon className="size-4" />
                   <span>Log meal</span>
                 </Button>
@@ -90,18 +85,40 @@ export default function MealsPage() {
               prefillData={prefillData}
               onSaved={refetch}
             />
+            <Button
+              variant="outline"
+              onClick={() => setIsScanOpen(true)}
+              className="rounded-full"
+            >
+              <CameraIcon className="size-4" />
+              <span>Scan food</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsPdfImportOpen(true)}
+              className="rounded-full"
+            >
+              <FileTextIcon className="size-4" />
+              <span>Import PDF</span>
+            </Button>
           </div>
         }
       />
 
-      <ImportMealModal
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
-        onImported={refetch}
+      <AiImageModal
+        isOpen={isScanOpen}
+        onClose={() => setIsScanOpen(false)}
+        onMealSaved={refetch}
         onPrefillManualForm={(data) => {
           setPrefillData(data);
           setIsLogFormOpen(true);
         }}
+      />
+
+      <PdfImportModal
+        isOpen={isPdfImportOpen}
+        onClose={() => setIsPdfImportOpen(false)}
+        onImportComplete={refetch}
       />
 
       <MealFilters value={filters} onChange={handleFiltersChange} />
@@ -123,21 +140,23 @@ export default function MealsPage() {
           description="Try adjusting your filters, or log your first meal to see it here."
           action={
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button
-                onClick={() => setIsImportOpen(true)}
-                className="rounded-full bg-emerald-700 hover:bg-emerald-800 text-white"
-              >
-                <CameraIcon className="size-4" />
-                <span>Scan food</span>
-              </Button>
               <MealFormDialog
                 trigger={
-                  <Button variant="outline" className="rounded-full">
-                    Log a meal
+                  <Button className="rounded-full">
+                    <PlusIcon className="size-4" />
+                    <span>Log meal</span>
                   </Button>
                 }
                 onSaved={refetch}
               />
+              <Button
+                variant="outline"
+                onClick={() => setIsScanOpen(true)}
+                className="rounded-full"
+              >
+                <CameraIcon className="size-4" />
+                <span>Scan food</span>
+              </Button>
             </div>
           }
         />
@@ -147,7 +166,7 @@ export default function MealsPage() {
         <div className="space-y-6">
           {groups.map(([date, dayMeals]) => (
             <div key={date} className="space-y-2.5">
-              <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              <h3 className="text-xs font-medium text-muted-foreground">
                 {date}
               </h3>
               <div className="space-y-2.5">
