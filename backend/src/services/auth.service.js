@@ -135,9 +135,18 @@ async function loginOrCreateGoogleUser({
   };
 }
 
+async function checkUserEmailExists(email) {
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    select: { id: true },
+  });
+  return Boolean(user);
+}
+
 module.exports = {
   registerUser,
   loginUser,
   getUserById,
   loginOrCreateGoogleUser,
+  checkUserEmailExists,
 };

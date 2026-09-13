@@ -7,6 +7,7 @@ const {
   getCurrentUser,
   startGoogleAuth,
   googleCallback,
+  checkEmail,
 } = require("../controllers/auth.controller");
 
 const { requireAuth } = require("../middleware/auth.middleware");
@@ -16,6 +17,7 @@ const router = express.Router();
 router.post("/register", register);
 router.post("/login", login);
 router.post("/logout", logout);
+router.get("/check-email", checkEmail);
 
 router.get("/me", requireAuth, getCurrentUser);
 

@@ -38,7 +38,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/onboarding", onboardingRoutes);
 
 app.use((error, req, res, next) => {
-  console.error(error);
+  console.error("API Error:", error);
 
   if (error.name === "ZodError") {
     return res.status(400).json({
@@ -48,9 +48,19 @@ app.use((error, req, res, next) => {
     });
   }
 
-  res.status(error.statusCode || 500).json({
+  // Only expose messages for explicit client/operational errors (4xx)
+  if (error.statusCode && error.statusCode < 500) {
+    return res.status(error.statusCode).json({
+      success: false,
+      message: error.message || "Invalid request",
+      errors: error.errors,
+    });
+  }
+
+  // For 500s or unexpected system/database errors, return safe generic message
+  res.status(500).json({
     success: false,
-    message: error.message || "Internal server error",
+    message: "Unable to connect to the service. Please try again in a moment.",
   });
 });
 
