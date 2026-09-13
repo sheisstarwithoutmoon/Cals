@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/contexts/auth-context";
 import { ApiError } from "@/lib/api/client";
 import * as onboardingApi from "@/lib/api/onboarding";
 import {
@@ -30,7 +31,6 @@ interface StepBasicInfoProps {
 }
 
 interface FormState {
-  name: string;
   age: string;
   gender: Gender | "";
   heightCm: string;
@@ -40,7 +40,6 @@ interface FormState {
 
 function toFormState(initial: Partial<OnboardingProfileInput>): FormState {
   return {
-    name: initial.name ?? "",
     age: initial.age?.toString() ?? "",
     gender: initial.gender ?? "",
     heightCm: initial.heightCm?.toString() ?? "",
@@ -51,10 +50,6 @@ function toFormState(initial: Partial<OnboardingProfileInput>): FormState {
 
 function validate(form: FormState) {
   const errors: Record<string, string> = {};
-
-  if (!form.name.trim()) {
-    errors.name = "Name is required";
-  }
 
   const age = Number(form.age);
   if (!form.age.trim() || !Number.isInteger(age) || age < 10 || age > 120) {
@@ -83,6 +78,7 @@ function validate(form: FormState) {
 }
 
 export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
+  const { user } = useAuth();
   const [form, setForm] = useState<FormState>(() => toFormState(initial));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -102,7 +98,7 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
     if (Object.keys(errors).length > 0) return;
 
     const payload: OnboardingProfileInput = {
-      name: form.name.trim(),
+      name: (initial.name ?? user?.name ?? "").trim(),
       age: Number(form.age),
       gender: form.gender as Gender,
       heightCm: Number(form.heightCm),
@@ -130,33 +126,17 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
       <div>
-        <h2 className="font-heading text-xl font-bold text-stone-900">
+        <h2 className="font-heading text-xl font-bold text-foreground">
           Tell us about yourself
         </h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           This helps us personalize your calorie and macro targets.
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="ob-name" className="text-xs font-bold text-stone-700">
-          Name
-        </Label>
-        <Input
-          id="ob-name"
-          value={form.name}
-          onChange={(event) => updateField("name", event.target.value)}
-          aria-invalid={Boolean(fieldErrors.name)}
-          placeholder="Enter your name"
-        />
-        {fieldErrors.name && (
-          <p className="text-xs text-rose-600">{fieldErrors.name}</p>
-        )}
-      </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="ob-age" className="text-xs font-bold text-stone-700">
+          <Label htmlFor="ob-age" className="text-xs font-bold text-foreground">
             Age
           </Label>
           <Input
@@ -170,12 +150,12 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
             placeholder="e.g. 28"
           />
           {fieldErrors.age && (
-            <p className="text-xs text-rose-600">{fieldErrors.age}</p>
+            <p className="text-xs text-destructive">{fieldErrors.age}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="ob-gender" className="text-xs font-bold text-stone-700">
+          <Label htmlFor="ob-gender" className="text-xs font-bold text-foreground">
             Gender
           </Label>
           <Select
@@ -198,14 +178,14 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
             </SelectContent>
           </Select>
           {fieldErrors.gender && (
-            <p className="text-xs text-rose-600">{fieldErrors.gender}</p>
+            <p className="text-xs text-destructive">{fieldErrors.gender}</p>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="ob-height" className="text-xs font-bold text-stone-700">
+          <Label htmlFor="ob-height" className="text-xs font-bold text-foreground">
             Height (cm)
           </Label>
           <Input
@@ -219,12 +199,12 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
             placeholder="e.g. 175"
           />
           {fieldErrors.heightCm && (
-            <p className="text-xs text-rose-600">{fieldErrors.heightCm}</p>
+            <p className="text-xs text-destructive">{fieldErrors.heightCm}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="ob-weight" className="text-xs font-bold text-stone-700">
+          <Label htmlFor="ob-weight" className="text-xs font-bold text-foreground">
             Current weight (kg)
           </Label>
           <Input
@@ -238,13 +218,13 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
             placeholder="e.g. 70"
           />
           {fieldErrors.currentWeight && (
-            <p className="text-xs text-rose-600">{fieldErrors.currentWeight}</p>
+            <p className="text-xs text-destructive">{fieldErrors.currentWeight}</p>
           )}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="ob-activity" className="text-xs font-bold text-stone-700">
+        <Label htmlFor="ob-activity" className="text-xs font-bold text-foreground">
           Activity level
         </Label>
         <Select
@@ -276,12 +256,12 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
           </SelectContent>
         </Select>
         {fieldErrors.activityLevel && (
-          <p className="text-xs text-rose-600">{fieldErrors.activityLevel}</p>
+          <p className="text-xs text-destructive">{fieldErrors.activityLevel}</p>
         )}
       </div>
 
       {formError && (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+        <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
           {formError}
         </p>
       )}
@@ -290,7 +270,7 @@ export function StepBasicInfo({ initial, onSaved }: StepBasicInfoProps) {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="w-full cursor-pointer rounded-full bg-emerald-700 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 active:scale-98"
+          className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 active:scale-98"
         >
           {isSubmitting && <Loader2Icon className="size-4 animate-spin" />}
           Continue

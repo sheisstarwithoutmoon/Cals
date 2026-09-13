@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, type ChangeEvent } from "react";
+import { useEffect, useState, useRef, type ChangeEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   SparklesIcon,
   UploadCloudIcon,
@@ -28,6 +29,7 @@ export function AiImageModal({
   onMealSaved,
   onPrefillManualForm,
 }: AiImageModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageMime, setImageMime] = useState<string>("image/jpeg");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -37,7 +39,11 @@ export function AiImageModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -129,9 +135,20 @@ export function AiImageModal({
     onClose();
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-4 animate-in fade-in duration-200"
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100vh",
+        backgroundColor: "rgba(0, 0, 0, 0.4)",
+        zIndex: 9999,
+      }}
+      className="flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={handleClose}
     >
       <div
@@ -195,13 +212,15 @@ export function AiImageModal({
                   alt="Uploaded meal"
                   className="max-h-64 w-full object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-3 right-3 rounded-full bg-stone-900/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-xs transition-colors hover:bg-stone-900"
-                >
-                  Change photo
-                </button>
+                {Boolean(extracted) && !isAnalyzing && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-3 right-3 rounded-full bg-stone-900/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-xs transition-colors hover:bg-stone-900"
+                  >
+                    Change photo
+                  </button>
+                )}
               </div>
 
               {!extracted && (
@@ -321,6 +340,7 @@ export function AiImageModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

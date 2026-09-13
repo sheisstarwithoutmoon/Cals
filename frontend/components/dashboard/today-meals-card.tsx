@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { MealListItem } from "@/components/meals/meal-list-item";
-import type { MealEntry } from "@/lib/types/api";
+import { MEAL_TYPE_LABELS } from "@/lib/constants";
+import type { MealEntry, MealType } from "@/lib/types/api";
 
 interface TodayMealsCardProps {
   meals: MealEntry[];
@@ -18,11 +19,18 @@ interface TodayMealsCardProps {
   onDeleted: (mealId: string) => void;
 }
 
+const MEAL_TYPE_ORDER: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
+
 export function TodayMealsCard({
   meals,
   onUpdated,
   onDeleted,
 }: TodayMealsCardProps) {
+  const groups = MEAL_TYPE_ORDER.map((mealType) => ({
+    mealType,
+    meals: meals.filter((meal) => meal.mealType === mealType),
+  })).filter((group) => group.meals.length > 0);
+
   return (
     <Card>
       <CardHeader>
@@ -36,7 +44,7 @@ export function TodayMealsCard({
           </Link>
         </CardAction>
       </CardHeader>
-      <CardContent className="space-y-2.5">
+      <CardContent className="space-y-4">
         {meals.length === 0 ? (
           <EmptyState
             icon={UtensilsCrossedIcon}
@@ -44,13 +52,22 @@ export function TodayMealsCard({
             description="Log your first meal to start tracking today's nutrition."
           />
         ) : (
-          meals.map((meal) => (
-            <MealListItem
-              key={meal.id}
-              meal={meal}
-              onUpdated={onUpdated}
-              onDeleted={onDeleted}
-            />
+          groups.map((group) => (
+            <div key={group.mealType} className="space-y-2.5">
+              <h3 className="text-xs font-medium text-muted-foreground">
+                {MEAL_TYPE_LABELS[group.mealType]}
+              </h3>
+              <div className="space-y-2.5">
+                {group.meals.map((meal) => (
+                  <MealListItem
+                    key={meal.id}
+                    meal={meal}
+                    onUpdated={onUpdated}
+                    onDeleted={onDeleted}
+                  />
+                ))}
+              </div>
+            </div>
           ))
         )}
       </CardContent>

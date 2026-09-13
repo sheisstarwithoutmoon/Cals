@@ -42,7 +42,7 @@ export function OnboardingWizard() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#eef7f2]">
+      <div className="flex min-h-screen items-center justify-center">
         <Loader2Icon className="size-8 animate-spin text-emerald-700" />
       </div>
     );
@@ -50,7 +50,7 @@ export function OnboardingWizard() {
 
   if (error || !status) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#eef7f2] px-4">
+      <div className="flex min-h-screen items-center justify-center px-4">
         <ErrorState
           message={error ?? "Something went wrong."}
           onRetry={refetch}
@@ -60,7 +60,7 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-emerald-100 via-[#eef7f2] to-[#eef7f2] px-4 py-10 sm:px-6">
+    <div className="flex min-h-screen w-full items-center justify-center px-4 py-10 sm:px-6">
       <div className="w-full max-w-xl">
         <div className="mb-6 flex justify-center">
           <BrandLogo size="md" brandName="Cals" href={null} />

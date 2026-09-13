@@ -342,7 +342,7 @@ export function AiChatDrawer({
     <div className="fixed inset-0 z-50 overflow-hidden">
       {/* Backdrop overlay: pure dark backdrop without glitchy backdrop-filter */}
       <div
-        className="fixed inset-0 bg-stone-900/40 transition-opacity duration-300 select-none animate-in fade-in"
+        className="fixed inset-0 bg-black/40 transition-opacity duration-300 select-none animate-in fade-in"
         onClick={onClose}
         aria-hidden="true"
       />

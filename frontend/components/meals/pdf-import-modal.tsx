@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, type ChangeEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   FileTextIcon,
   UploadCloudIcon,
@@ -90,6 +91,12 @@ export function PdfImportModal({
     onClose();
   }
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -103,11 +110,22 @@ export function PdfImportModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-4 animate-in fade-in duration-200"
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100vh",
+        backgroundColor: "rgba(0, 0, 0, 0.4)",
+        zIndex: 9999,
+      }}
+      className="flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={handleClose}
     >
       <div
@@ -253,6 +271,7 @@ export function PdfImportModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

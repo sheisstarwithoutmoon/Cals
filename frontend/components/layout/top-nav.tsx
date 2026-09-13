@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { LogOutIcon } from "lucide-react";
+
 import { BrandLogo } from "@/components/common/brand-logo";
+import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 
-export function MobileHeader() {
+export function TopNav() {
+  const pathname = usePathname();
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -31,12 +37,33 @@ export function MobileHeader() {
     : "?";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 border-b border-border bg-white/95 backdrop-blur-md md:hidden">
-      <div className="mx-auto flex h-full w-full items-center justify-between px-4 sm:px-6">
-        <BrandLogo size="sm" brandName="Cals" href="/dashboard" />
+    <header className="sticky top-0 z-30 hidden h-16 shrink-0 border-b border-border bg-white/95 backdrop-blur-md md:flex">
+      <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-10">
+          <BrandLogo size="sm" brandName="Cals" href="/dashboard" />
 
-        <div className="flex items-center gap-2.5">
-          {/* User Profile Avatar with custom dropdown */}
+          <nav className="flex items-center gap-7">
+            {NAV_ITEMS.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+                    isActive && "font-semibold text-primary hover:text-primary"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* User Profile Avatar with sleek dropdown menu */}
           <div ref={menuRef} className="relative">
             <button
               type="button"
