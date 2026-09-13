@@ -17,13 +17,6 @@ export function GuestShell({ children }: { children: React.ReactNode }) {
     router.replace(user.onboardingCompleted ? "/dashboard" : "/onboarding");
   }, [isLoading, user, router]);
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2Icon className="size-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   if (user) {
     return null;
