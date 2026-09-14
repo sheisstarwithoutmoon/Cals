@@ -1,10 +1,8 @@
 const { z } = require("zod");
 
-const {
-  analyzeFoodImage,
-  chatWithAssistant,
-  extractNutritionFromText,
-} = require("../services/ai.service");
+const { chatWithAssistant } = require("../services/ai/ai.service");
+const { analyzeFoodImage } = require("../services/ai/attachment.service");
+const { extractNutritionFromText } = require("../services/ai/meal-extraction.service");
 const chatService = require("../services/chat.service");
 
 async function analyzeImage(req, res, next) {
@@ -29,29 +27,15 @@ async function analyzeImage(req, res, next) {
   }
 }
 
-const nutrientTotal = z.number().nonnegative().optional();
-
 const extractNutritionSchema = z.object({
   description: z.string().trim().min(1, "description is required").max(500),
-  // Known meal totals to keep while splitting the description into items.
-  targetTotals: z
-    .object({
-      calories: nutrientTotal,
-      protein: nutrientTotal,
-      carbs: nutrientTotal,
-      fat: nutrientTotal,
-      fiber: nutrientTotal,
-      sugar: nutrientTotal,
-      sodium: nutrientTotal,
-    })
-    .optional(),
 });
 
 async function extractNutrition(req, res, next) {
   try {
-    const { description, targetTotals } = extractNutritionSchema.parse(req.body);
+    const { description } = extractNutritionSchema.parse(req.body);
 
-    const data = await extractNutritionFromText(description, { targetTotals });
+    const data = await extractNutritionFromText(description);
 
     res.json({
       success: true,
@@ -62,9 +46,14 @@ async function extractNutrition(req, res, next) {
   }
 }
 
+// Minutes from `Date.prototype.getTimezoneOffset()` on the client, so "today"
+// and date questions use the user's calendar day rather than the server's.
+const tzOffsetSchema = z.coerce.number().int().min(-840).max(840).default(0);
+
 async function chat(req, res, next) {
   try {
     const { message, imageBase64, imageMimeType, pdfBase64 } = req.body;
+    const tzOffset = tzOffsetSchema.parse(req.body.tzOffset);
 
     if (!message?.trim() && !imageBase64 && !pdfBase64) {
       return res.status(400).json({
@@ -79,6 +68,7 @@ async function chat(req, res, next) {
       imageBase64,
       imageMimeType,
       pdfBase64,
+      tzOffset,
     });
 
     res.json({

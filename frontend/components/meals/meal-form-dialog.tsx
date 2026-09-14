@@ -368,17 +368,12 @@ export function MealFormDialog({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [itemErrors, setItemErrors] = useState<ItemErrors>({});
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  // The food name the current items' nutrition belongs to (a saved or
-  // imported meal, or the last AI estimate). While the name still matches,
-  // "Estimate with AI" only splits the meal and keeps its totals.
-  const [itemsSourceName, setItemsSourceName] = useState<string | null>(null);
   const formId = useId();
 
   useEffect(() => {
     if (isOpen) {
       const initial = buildInitialState(meal, defaultConsumedAt, prefillData);
       setForm(initial);
-      setItemsSourceName(sumItems(initial.items).calories > 0 ? initial.foodName : null);
       setExpandedItems(new Set());
       setFormError(null);
       setFieldErrors({});
@@ -470,12 +465,6 @@ export function MealFormDialog({
     });
   }
 
-  const normalizedName = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-  const keepsTotals =
-    itemsSourceName !== null &&
-    normalizedName(form.foodName) === normalizedName(itemsSourceName) &&
-    sumItems(form.items).calories > 0;
-
   async function handleEstimateWithAi() {
     if (!form.foodName.trim()) {
       setFormError("Enter what you ate first, then estimate with AI.");
@@ -485,43 +474,21 @@ export function MealFormDialog({
     setFormError(null);
     setIsEstimating(true);
 
-    const description = form.foodName.trim();
-    const currentTotals = sumItems(form.items);
-    const shouldKeepTotals = keepsTotals;
-
     try {
-      const { data } = await extractNutrition({
-        description,
-        targetTotals: shouldKeepTotals
-          ? {
-              calories: Math.round(currentTotals.calories),
-              protein: roundTo1(currentTotals.protein),
-              carbs: roundTo1(currentTotals.carbs),
-              fat: roundTo1(currentTotals.fat),
-              fiber: roundTo1(currentTotals.fiber),
-              sugar: roundTo1(currentTotals.sugar),
-              sodium: roundTo1(currentTotals.sodium),
-            }
-          : undefined,
-      });
+      const { data } = await extractNutrition({ description: form.foodName.trim() });
       const items = data.items?.length ? data.items.map(buildItem) : [singleItemFrom(data)];
 
       setForm((prev) => ({
         ...prev,
-        // An existing meal keeps its type; only a fresh estimate suggests one.
-        mealType: shouldKeepTotals ? prev.mealType : data.mealType ?? prev.mealType,
+        // An existing meal keeps its type; only a new meal takes the suggested one.
+        mealType: isEditing ? prev.mealType : data.mealType ?? prev.mealType,
         items,
       }));
-      setItemsSourceName(description);
       setItemErrors({});
       setExpandedItems(new Set());
 
       const itemLabel = `${items.length} ${items.length === 1 ? "item" : "items"}`;
-      toast.success(
-        shouldKeepTotals
-          ? `Split into ${itemLabel}, keeping this meal's totals.`
-          : `Filled in ${itemLabel} with AI. Review before saving.`
-      );
+      toast.success(`Filled in ${itemLabel} with AI. Review before saving.`);
     } catch (error) {
       setFormError(
         error instanceof ApiError ? error.message : "Couldn't estimate nutrition. Please try again."
@@ -557,7 +524,6 @@ export function MealFormDialog({
         items: scannedItems,
       }));
 
-      setItemsSourceName(extracted.foodName || null);
       setItemErrors({});
       setExpandedItems(new Set());
 
@@ -791,9 +757,7 @@ export function MealFormDialog({
                   <p className="text-xs text-destructive">{fieldErrors.foodName}</p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    {keepsTotals
-                      ? "AI splits this meal into its items and keeps the current totals. Change the name to estimate from scratch."
-                      : "List everything in this meal, separated by commas. AI splits it into items."}
+                    List everything in this meal, separated by commas. AI splits it into items.
                   </p>
                 )}
               </div>
@@ -811,13 +775,7 @@ export function MealFormDialog({
                   <SparklesIcon className="size-4" />
                 )}
                 <span>
-                  {isEstimating
-                    ? keepsTotals
-                      ? "Splitting into items..."
-                      : "Estimating each item..."
-                    : keepsTotals
-                      ? "Split into items with AI"
-                      : "Estimate nutrition with AI"}
+                  {isEstimating ? "Estimating each item..." : "Estimate nutrition with AI"}
                 </span>
               </Button>
             </FormSection>

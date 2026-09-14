@@ -56,13 +56,7 @@ export function analyzeImage(payload: { imageBase64: string; mimeType?: string }
   });
 }
 
-export function extractNutrition(payload: {
-  description: string;
-  /** Known meal totals to keep while the AI only splits the meal into items. */
-  targetTotals?: Partial<
-    Record<"calories" | "protein" | "carbs" | "fat" | "fiber" | "sugar" | "sodium", number>
-  >;
-}) {
+export function extractNutrition(payload: { description: string }) {
   return apiFetch<{ success: true; data: ExtractedNutrition }>("/ai/extract-nutrition", {
     method: "POST",
     body: payload,
@@ -77,7 +71,7 @@ export function sendChatMessage(payload: {
 }) {
   return apiFetch<ChatResponse>("/ai/chat", {
     method: "POST",
-    body: payload,
+    body: { ...payload, tzOffset: new Date().getTimezoneOffset() },
   });
 }
 
