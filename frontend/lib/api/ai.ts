@@ -1,5 +1,11 @@
 import { apiFetch } from "@/lib/api/client";
-import type { AttachmentType, Goal, MealEntry, MealType } from "@/lib/types/api";
+import type {
+  AttachmentType,
+  Goal,
+  MealEntry,
+  MealItemInput,
+  MealType,
+} from "@/lib/types/api";
 
 export interface ExtractedNutrition {
   foodName: string;
@@ -15,6 +21,8 @@ export interface ExtractedNutrition {
   sodium?: number;
   micronutrients?: Record<string, number>;
   confidence?: number;
+  /** Per-item breakdown; present on text estimates, absent on photo scans. */
+  items?: MealItemInput[];
   attachmentUrl?: string;
   attachmentType?: AttachmentType;
 }
@@ -48,7 +56,13 @@ export function analyzeImage(payload: { imageBase64: string; mimeType?: string }
   });
 }
 
-export function extractNutrition(payload: { description: string }) {
+export function extractNutrition(payload: {
+  description: string;
+  /** Known meal totals to keep while the AI only splits the meal into items. */
+  targetTotals?: Partial<
+    Record<"calories" | "protein" | "carbs" | "fat" | "fiber" | "sugar" | "sodium", number>
+  >;
+}) {
   return apiFetch<{ success: true; data: ExtractedNutrition }>("/ai/extract-nutrition", {
     method: "POST",
     body: payload,

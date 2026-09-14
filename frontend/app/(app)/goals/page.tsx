@@ -1,67 +1,74 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { ErrorState } from "@/components/common/error-state";
 import { PageHeader } from "@/components/common/page-header";
-import { GoalForm } from "@/components/goals/goal-form";
+import { DailyTargetsCard } from "@/components/goals/daily-targets-card";
 import { GoalProgressPreview } from "@/components/goals/goal-progress-preview";
-import { GoalSummary } from "@/components/goals/goal-summary";
+import { BodyCard, HealthCard, WeightGoalCard } from "@/components/goals/profile-cards";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGoal } from "@/hooks/use-goal";
 import { useMeals } from "@/hooks/use-meals";
+import { useProfile } from "@/hooks/use-profile";
 import { sumMeals, todayRange } from "@/lib/nutrition";
+import type { ProfileUpdate } from "@/lib/types/api";
 
 export default function GoalsPage() {
   const { startDate, endDate } = useMemo(() => todayRange(), []);
-  const { goal, isLoading, error, refetch, save } = useGoal();
+  const { goal, isLoading: isGoalLoading, error: goalError, refetch: refetchGoal, save } = useGoal();
+  const {
+    profile,
+    isLoading: isProfileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+    update,
+  } = useProfile();
   const { meals } = useMeals({ startDate, endDate, limit: 100 });
   const totals = useMemo(() => sumMeals(meals), [meals]);
 
-  const hasGoal = Boolean(goal && goal.dailyCalories != null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [hasInitialized, setHasInitialized] = useState(false);
-
-  useEffect(() => {
-    if (!isLoading && !hasInitialized) {
-      setIsEditing(!hasGoal);
-      setHasInitialized(true);
-    }
-  }, [isLoading, hasGoal, hasInitialized]);
-
-  async function handleSave(...args: Parameters<typeof save>) {
-    const updated = await save(...args);
-    setIsEditing(false);
-    return updated;
+  // Profile changes can update the saved goal's target weight on the server.
+  async function updateProfile(patch: ProfileUpdate) {
+    const adjustments = await update(patch);
+    refetchGoal();
+    return adjustments;
   }
+
+  const error = profileError ?? goalError;
+  const isLoading = (isProfileLoading && !profile) || (isGoalLoading && !goal);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Goals"
-        description="Set your daily targets and see how you're tracking."
+        description="Your weight goal, body details, health and daily targets in one place."
       />
 
-      {error && <ErrorState message={error} onRetry={refetch} />}
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            refetchProfile();
+            refetchGoal();
+          }}
+        />
+      )}
 
       {isLoading ? (
-        <div className="space-y-6">
-          <Skeleton className="h-80 w-full rounded-xl" />
-          <Skeleton className="h-56 w-full rounded-xl" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-72 w-full rounded-2xl" />
+          ))}
         </div>
       ) : (
-        !error && (
-          <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-            {isEditing || !goal ? (
-              <GoalForm
-                goal={goal}
-                onSave={handleSave}
-                onCancel={hasGoal ? () => setIsEditing(false) : undefined}
-              />
-            ) : (
-              <GoalSummary goal={goal} onEdit={() => setIsEditing(true)} />
-            )}
+        !error &&
+        profile && (
+          <div className="grid items-stretch gap-6 lg:grid-cols-2">
+            <WeightGoalCard view={profile} onUpdate={updateProfile} />
+            <BodyCard view={profile} onUpdate={updateProfile} />
+            <DailyTargetsCard goal={goal} suggested={profile.suggestedTargets} onSave={save} />
             <GoalProgressPreview goal={goal} totals={totals} />
+            <HealthCard view={profile} onUpdate={updateProfile} />
           </div>
         )
       )}

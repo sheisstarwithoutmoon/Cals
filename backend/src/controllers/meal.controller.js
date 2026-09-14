@@ -2,12 +2,21 @@ const {
   mealSchema,
   updateMealSchema,
   mealQuerySchema,
+  mealSummaryQuerySchema,
+  mealPhotoSchema,
+  bulkMealsSchema,
+  pdfImportSchema,
 } = require("../schemas/meal.schema");
+
+const { uploadMealPhoto } = require("../services/upload.service");
 
 const {
   createMeal,
+  createMealsBulk,
   getMealById,
   getMeals,
+  getMealSummary,
+  getMealReport,
   updateMeal,
   deleteMeal,
 } = require("../services/meal.service");
@@ -42,6 +51,56 @@ async function list(req, res, next) {
     res.json({
       success: true,
       ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function summary(req, res, next) {
+  try {
+    const filters = mealSummaryQuerySchema.parse(req.query);
+
+    const result = await getMealSummary(
+      req.user.id,
+      filters
+    );
+
+    res.json({
+      success: true,
+      summary: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** All report datasets for a date range (same filters as the summary). */
+async function report(req, res, next) {
+  try {
+    const filters = mealSummaryQuerySchema.parse(req.query);
+
+    const result = await getMealReport(req.user.id, filters);
+
+    res.json({
+      success: true,
+      report: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function uploadPhoto(req, res, next) {
+  try {
+    const { imageBase64 } = mealPhotoSchema.parse(req.body);
+
+    const attachmentUrl = await uploadMealPhoto(imageBase64);
+
+    res.status(201).json({
+      success: true,
+      attachmentUrl,
+      attachmentType: "IMAGE",
     });
   } catch (error) {
     next(error);
@@ -106,27 +165,35 @@ async function remove(req, res, next) {
   }
 }
 
-const { importMealsFromPdf } = require("../services/ai.service");
+const { parseMealsFromPdf } = require("../services/ai.service");
 
-async function importPdf(req, res, next) {
+/** Parses a diary PDF into meal drafts for review; nothing is saved. */
+async function previewPdfImport(req, res, next) {
   try {
-    const { pdfBase64 } = req.body;
+    const { pdfBase64 } = pdfImportSchema.parse(req.body);
 
-    if (!pdfBase64) {
-      return res.status(400).json({
-        success: false,
-        message: "pdfBase64 string is required",
-      });
-    }
+    const result = await parseMealsFromPdf({ pdfBase64 });
 
-    const result = await importMealsFromPdf({ userId: req.user.id, pdfBase64 });
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Saves the meals the user picked (and possibly edited) in one batch. */
+async function createBulk(req, res, next) {
+  try {
+    const { meals } = bulkMealsSchema.parse(req.body);
+
+    const result = await createMealsBulk(req.user.id, meals);
 
     res.status(201).json({
       success: true,
-      message: `Successfully imported ${result.importedCount} meal entries`,
-      count: result.importedCount,
-      skippedCount: result.skippedCount,
-      sampleEntries: result.sampleEntries,
+      count: result.mealCount,
+      itemCount: result.itemCount,
     });
   } catch (error) {
     next(error);
@@ -136,8 +203,12 @@ async function importPdf(req, res, next) {
 module.exports = {
   create,
   list,
+  summary,
+  report,
+  uploadPhoto,
   getOne,
   update,
   remove,
-  importPdf,
+  previewPdfImport,
+  createBulk,
 };

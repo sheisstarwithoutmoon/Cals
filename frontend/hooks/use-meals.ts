@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import * as mealsApi from "@/lib/api/meals";
 import { ApiError } from "@/lib/api/client";
+import { MAX_PAGES } from "@/lib/constants";
 import { onDataChanged } from "@/lib/events";
 import type {
   MealEntry,
@@ -35,8 +36,16 @@ export function useMeals(filters: MealListFilters) {
 
     try {
       const result = await mealsApi.listMeals(filters);
+      const totalPages = Math.min(result.pagination.totalPages, MAX_PAGES);
+      const page = Math.min(Math.max(1, result.pagination.page), MAX_PAGES);
       setMeals(result.meals);
-      setPagination(result.pagination);
+      setPagination({
+        ...result.pagination,
+        page,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      });
     } catch (err) {
       if (err instanceof ApiError) {
         const fieldMessage = Object.values(err.fieldErrors)[0];

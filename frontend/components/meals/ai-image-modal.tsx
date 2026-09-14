@@ -1,20 +1,35 @@
 "use client";
 
-import { useEffect, useState, useRef, type ChangeEvent } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState, type DragEvent } from "react";
 import {
-  SparklesIcon,
-  UploadCloudIcon,
+  AlertCircleIcon,
   CameraIcon,
+  ImagePlusIcon,
   Loader2Icon,
-  CheckIcon,
-  XIcon,
-  FlameIcon,
+  PencilIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  SparklesIcon,
 } from "lucide-react";
+import { cn } from "cn";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { MealItemsTable } from "@/components/meals/meal-items-table";
+import { ACCEPTED_IMAGE_TYPES, compressImage } from "@/components/meals/meal-photo-field";
+import { MEAL_TYPE_META } from "@/components/meals/meal-type-meta";
 import { analyzeImage, type ExtractedNutrition } from "@/lib/api/ai";
 import { ApiError } from "@/lib/api/client";
 import { createMeal } from "@/lib/api/meals";
+import { MEAL_TYPE_LABELS } from "@/lib/constants";
+import { formatNumber } from "@/lib/format";
 
 interface AiImageModalProps {
   isOpen: boolean;
@@ -23,324 +38,371 @@ interface AiImageModalProps {
   onPrefillManualForm?: (data: ExtractedNutrition) => void;
 }
 
+const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+
 export function AiImageModal({
   isOpen,
   onClose,
   onMealSaved,
   onPrefillManualForm,
 }: AiImageModalProps) {
-  const [mounted, setMounted] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageMime, setImageMime] = useState<string>("image/jpeg");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [extracted, setExtracted] = useState<ExtractedNutrition | null>(null);
+  const [result, setResult] = useState<ExtractedNutrition | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isBusy = isPreparing || isAnalyzing || isSaving;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  function reset() {
+    setPhoto(null);
+    setIsDragging(false);
+    setIsPreparing(false);
+    setIsAnalyzing(false);
+    setIsSaving(false);
+    setResult(null);
+    setError(null);
+  }
 
-  if (!isOpen || !mounted) return null;
+  function handleClose() {
+    if (isAnalyzing || isSaving) return;
+    reset();
+    onClose();
+  }
 
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function handleFile(file: File | undefined) {
     if (!file) return;
 
-    setError(null);
-    setExtracted(null);
-    setImageMime(file.type || "image/jpeg");
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setError("Choose a JPEG, PNG or WebP photo.");
+      return;
+    }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    if (file.size > MAX_SOURCE_BYTES) {
+      setError("That photo is too large. Choose one under 20 MB.");
+      return;
+    }
+
+    setError(null);
+    setResult(null);
+    setIsPreparing(true);
+
+    try {
+      // Resized before analysis so large phone photos upload quickly.
+      setPhoto(await compressImage(file));
+    } catch {
+      setError("Couldn't read that photo. Please try another one.");
+    } finally {
+      setIsPreparing(false);
+    }
   }
 
   async function handleAnalyze() {
-    if (!imagePreview) return;
+    if (!photo) return;
     setIsAnalyzing(true);
     setError(null);
 
     try {
-      const res = await analyzeImage({
-        imageBase64: imagePreview,
-        mimeType: imageMime,
-      });
-
-      if (res.success && res.data) {
-        setExtracted(res.data);
-      } else {
-        setError("Could not analyze nutritional details from this photo.");
-      }
+      const response = await analyzeImage({ imageBase64: photo, mimeType: "image/jpeg" });
+      setResult(response.data);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Failed to analyze image. Please try again."
+        err instanceof ApiError ? err.message : "Couldn't analyze this photo. Please try again."
       );
     } finally {
       setIsAnalyzing(false);
     }
   }
 
-  async function handleSaveDirectly() {
-    if (!extracted) return;
+  async function handleLogMeal() {
+    if (!result) return;
     setIsSaving(true);
     setError(null);
 
     try {
       await createMeal({
-        mealType: extracted.mealType || "LUNCH",
-        foodName: extracted.foodName || "Photo Logged Meal",
-        quantity: extracted.quantity || 1,
-        quantityUnit: extracted.quantityUnit || "serving",
-        calories: extracted.calories,
-        protein: extracted.protein || 0,
-        carbs: extracted.carbs || 0,
-        fat: extracted.fat || 0,
-        fiber: extracted.fiber || 0,
-        sugar: extracted.sugar || 0,
-        sodium: extracted.sodium || 0,
-        micronutrients: extracted.micronutrients || {},
-        attachmentUrl: extracted.attachmentUrl,
-        attachmentType: extracted.attachmentType,
+        mealType: result.mealType,
+        foodName: result.foodName,
+        calories: result.calories,
+        protein: result.protein,
+        carbs: result.carbs,
+        fat: result.fat,
+        fiber: result.fiber,
+        sugar: result.sugar,
+        sodium: result.sodium,
+        items: result.items,
+        attachmentUrl: result.attachmentUrl,
+        attachmentType: result.attachmentType,
         consumedAt: new Date().toISOString(),
         source: "AI",
       });
 
+      toast.success("Meal logged");
       onMealSaved();
-      handleClose();
+      reset();
+      onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to save meal entry.");
-    } finally {
+      setError(err instanceof ApiError ? err.message : "Couldn't log this meal. Please try again.");
       setIsSaving(false);
     }
   }
 
-  function handlePrefill() {
-    if (extracted && onPrefillManualForm) {
-      onPrefillManualForm(extracted);
-      handleClose();
-    }
-  }
-
-  function handleClose() {
-    setImagePreview(null);
-    setExtracted(null);
-    setError(null);
-    setIsAnalyzing(false);
-    setIsSaving(false);
+  function handleEdit() {
+    if (!result || !onPrefillManualForm) return;
+    onPrefillManualForm(result);
+    reset();
     onClose();
   }
 
-  return createPortal(
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: "100vw",
-        height: "100vh",
-        backgroundColor: "rgba(0, 0, 0, 0.4)",
-        zIndex: 9999,
-      }}
-      className="flex items-center justify-center p-4 animate-in fade-in duration-200"
-      onClick={handleClose}
-    >
-      <div
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-2xl sm:p-7 animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-          <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
-              <CameraIcon className="size-5" />
-            </div>
-            <div>
-              <h2 className="font-heading text-lg font-bold text-stone-900">
-                AI Photo Calorie Extraction
-              </h2>
-              <p className="text-xs text-stone-500">
-                Upload a food plate or nutrition label to extract macros
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-          >
-            <XIcon className="size-5" />
-          </button>
-        </div>
+  const meta = result ? MEAL_TYPE_META[result.mealType] : null;
+  const MealIcon = meta?.icon;
+  const items = result?.items ?? [];
 
-        {/* Upload Dropzone */}
-        <div className="mt-5 space-y-4">
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent
+        className={cn(
+          "max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 rounded-2xl bg-card p-0",
+          result ? "sm:max-w-[min(64rem,calc(100%-3rem))]" : "sm:max-w-lg"
+        )}
+      >
+        <DialogHeader className="flex-row items-center gap-3 border-b border-border/70 px-5 py-4 pr-12 sm:px-6">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#E7F0EA] text-primary">
+            <CameraIcon className="size-5" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <DialogTitle className="text-lg font-semibold">
+              {result ? "Review scanned meal" : "Scan food"}
+            </DialogTitle>
+            <DialogDescription>
+              {result
+                ? "Check the foods found in your photo, then log the meal or edit it first."
+                : "Upload a photo of your meal or a nutrition label. AI identifies each food and estimates its nutrition."}
+            </DialogDescription>
+          </div>
+        </DialogHeader>
+
+        <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/40 px-4 py-4 sm:px-6 sm:py-5">
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            onChange={handleFileChange}
+            accept={ACCEPTED_IMAGE_TYPES.join(",")}
             className="hidden"
+            onChange={(event) => {
+              handleFile(event.target.files?.[0]);
+              event.target.value = "";
+            }}
           />
 
-          {!imagePreview ? (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-emerald-300/80 bg-[#eef7f2]/60 p-8 text-center transition-colors hover:border-emerald-500 hover:bg-[#e6f4eb]"
-            >
-              <div className="flex size-12 items-center justify-center rounded-full bg-white text-emerald-700 shadow-2xs">
-                <UploadCloudIcon className="size-6" />
-              </div>
-              <p className="mt-3 text-sm font-semibold text-stone-800">
-                Click or drag to upload photo
-              </p>
-              <p className="mt-1 text-xs text-stone-500">
-                Supports JPG, PNG, WEBP of food plates or nutrition labels
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="relative overflow-hidden rounded-2xl border border-stone-200 bg-stone-100">
-                <img
-                  src={imagePreview}
-                  alt="Uploaded meal"
-                  className="max-h-64 w-full object-cover"
-                />
-                {Boolean(extracted) && !isAnalyzing && (
-                  <button
+          {!result && (
+            <>
+              {!photo ? (
+                <button
+                  type="button"
+                  disabled={isPreparing}
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(event: DragEvent<HTMLButtonElement>) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                    handleFile(event.dataTransfer.files?.[0]);
+                  }}
+                  className={cn(
+                    "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-10 text-center transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                    isDragging
+                      ? "border-primary bg-[#E7F0EA]"
+                      : "border-border bg-card hover:border-primary/40 hover:bg-[#E7F0EA]/60"
+                  )}
+                >
+                  <span className="flex size-11 items-center justify-center rounded-full bg-[#E7F0EA] text-primary">
+                    {isPreparing ? (
+                      <Loader2Icon className="size-5 animate-spin" />
+                    ) : (
+                      <ImagePlusIcon className="size-5" />
+                    )}
+                  </span>
+                  <span className="text-sm font-medium text-foreground">Choose a photo</span>
+                  <span className="text-xs text-muted-foreground">
+                    Click or drag an image here. JPEG, PNG or WebP.
+                  </span>
+                </button>
+              ) : (
+                <div className="space-y-4 rounded-2xl border border-border bg-card p-4">
+                  <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photo} alt="Meal to scan" className="size-full object-cover" />
+                    {isAnalyzing ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 text-sm font-medium text-white">
+                        <Loader2Icon className="size-6 animate-spin" />
+                        Finding foods in your photo
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="absolute right-2.5 bottom-2.5 rounded-full bg-white/95 hover:bg-white"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <RefreshCwIcon />
+                        Replace
+                      </Button>
+                    )}
+                  </div>
+
+                  <Button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-3 right-3 rounded-full bg-stone-900/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-xs transition-colors hover:bg-stone-900"
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing}
+                    className="w-full rounded-full"
                   >
-                    Change photo
-                  </button>
-                )}
+                    <SparklesIcon />
+                    Analyze photo
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {result && meta && MealIcon && (
+            <>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-5">
+                <div className="relative min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)] lg:min-h-64">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={result.attachmentUrl || photo || ""}
+                    alt={result.foodName}
+                    className="aspect-[16/10] w-full object-cover lg:absolute lg:inset-0 lg:aspect-auto lg:h-full"
+                  />
+                </div>
+
+                <section className="min-w-0 space-y-4 rounded-2xl border border-border bg-card p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        "flex size-11 shrink-0 items-center justify-center rounded-full",
+                        meta.iconClassName
+                      )}
+                    >
+                      <MealIcon className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">
+                        {MEAL_TYPE_LABELS[result.mealType]}
+                      </p>
+                      <p className="text-base break-words text-foreground">{result.foodName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {items.length} {items.length === 1 ? "food" : "foods"} found
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm whitespace-nowrap text-muted-foreground">
+                      <span className="text-2xl font-semibold text-foreground tabular-nums">
+                        {formatNumber(result.calories)}
+                      </span>{" "}
+                      kcal
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { label: "Protein", value: result.protein, dot: "bg-chart-2" },
+                        { label: "Carbs", value: result.carbs, dot: "bg-chart-3" },
+                        { label: "Fat", value: result.fat, dot: "bg-chart-4" },
+                      ] as const
+                    ).map((macro) => (
+                      <div key={macro.label} className="min-w-0 rounded-xl bg-muted/50 px-3 py-2.5">
+                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className={cn("size-2 shrink-0 rounded-full", macro.dot)} />
+                          {macro.label}
+                        </p>
+                        <p className="mt-0.5 text-base font-semibold text-foreground tabular-nums">
+                          {formatNumber(macro.value ?? 0, 1)}g
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Values are AI estimates from the photo. Use Edit to adjust any food or
+                    quantity before logging.
+                  </p>
+                </section>
               </div>
 
-              {!extracted && (
-                <Button
-                  type="button"
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing}
-                  className="w-full rounded-full bg-emerald-700 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2Icon className="size-4 animate-spin" />
-                      <span>Extracting nutritional values...</span>
-                    </>
-                  ) : (
-                    <>
-                      <SparklesIcon className="size-4" />
-                      <span>Analyze Photo with AI</span>
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
+              <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="px-4 py-3.5 sm:px-5">
+                  <h3 className="text-sm font-semibold text-foreground">Items ({items.length})</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Nutrition is for the quantity shown.
+                  </p>
+                </div>
+                <MealItemsTable items={items} className="border-t border-border/70" />
+              </section>
+            </>
           )}
 
           {error && (
-            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-medium text-rose-700">
-              {error}
-            </p>
-          )}
-
-          {/* Extracted Nutrition Breakdown */}
-          {extracted && (
-            <div className="space-y-4 rounded-2xl border border-emerald-200/80 bg-[#f2faf5] p-4 sm:p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-                    {extracted.mealType}
-                  </span>
-                  <h3 className="mt-1 font-heading text-lg font-bold text-stone-900">
-                    {extracted.foodName}
-                  </h3>
-                  <p className="text-xs text-stone-500">
-                    Serving: {extracted.quantity} {extracted.quantityUnit}
-                  </p>
-                </div>
-
-                <div className="text-right">
-                  <div className="flex items-center gap-1 text-emerald-800">
-                    <FlameIcon className="size-4" />
-                    <span className="font-heading text-2xl font-extrabold">
-                      {extracted.calories}
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-bold text-stone-400 uppercase">
-                    KCAL
-                  </p>
-                </div>
-              </div>
-
-              {/* Macros Grid */}
-              <div className="grid grid-cols-3 gap-2 border-t border-emerald-900/10 pt-3 text-center">
-                <div className="rounded-xl bg-white p-2.5 shadow-2xs border border-emerald-100">
-                  <p className="text-[10px] font-bold text-stone-500 uppercase">
-                    Protein
-                  </p>
-                  <p className="mt-0.5 font-heading text-base font-bold text-stone-900">
-                    {extracted.protein ?? 0}g
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white p-2.5 shadow-2xs border border-emerald-100">
-                  <p className="text-[10px] font-bold text-stone-500 uppercase">
-                    Carbs
-                  </p>
-                  <p className="mt-0.5 font-heading text-base font-bold text-stone-900">
-                    {extracted.carbs ?? 0}g
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white p-2.5 shadow-2xs border border-emerald-100">
-                  <p className="text-[10px] font-bold text-stone-500 uppercase">
-                    Fat
-                  </p>
-                  <p className="mt-0.5 font-heading text-base font-bold text-stone-900">
-                    {extracted.fat ?? 0}g
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2 pt-2">
-                <Button
-                  type="button"
-                  onClick={handleSaveDirectly}
-                  disabled={isSaving}
-                  className="flex-1 rounded-full bg-emerald-700 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
-                >
-                  {isSaving ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
-                    <CheckIcon className="size-4" />
-                  )}
-                  <span>Save to Diary</span>
-                </Button>
-
-                {onPrefillManualForm && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handlePrefill}
-                    className="rounded-full border-stone-300 text-sm font-semibold text-stone-700 hover:bg-white"
-                  >
-                    Edit / Pre-fill
-                  </Button>
-                )}
-              </div>
+            <div className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">
+              <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+
+        {result && (
+          <div className="flex flex-col-reverse gap-3 border-t border-border/70 bg-card px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <p className="text-sm text-muted-foreground tabular-nums">
+              {items.length} {items.length === 1 ? "item" : "items"} ·{" "}
+              <span className="font-semibold text-foreground">{formatNumber(result.calories)}</span>{" "}
+              kcal total
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                disabled={isBusy}
+                onClick={() => {
+                  setResult(null);
+                  fileInputRef.current?.click();
+                }}
+              >
+                <RefreshCwIcon />
+                Scan another photo
+              </Button>
+              {onPrefillManualForm && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  disabled={isBusy}
+                  onClick={handleEdit}
+                >
+                  <PencilIcon />
+                  Edit before logging
+                </Button>
+              )}
+              <Button
+                type="button"
+                className="rounded-full"
+                disabled={isBusy}
+                onClick={handleLogMeal}
+              >
+                {isSaving ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                {isSaving ? "Logging meal" : "Log meal"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

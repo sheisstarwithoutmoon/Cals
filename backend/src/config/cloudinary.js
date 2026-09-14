@@ -1,3 +1,7 @@
+// Load .env first so the credentials are read correctly no matter which
+// module requires Cloudinary first.
+require("dotenv").config();
+
 const { v2: cloudinary } = require("cloudinary");
 
 const isCloudinaryConfigured = Boolean(

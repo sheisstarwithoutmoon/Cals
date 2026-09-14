@@ -5,10 +5,10 @@ import { BarChart3Icon } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
-import type { DailyTotal } from "@/lib/nutrition";
+import type { DailyPoint } from "@/lib/reports";
 
 interface MacroTrendChartProps {
-  data: DailyTotal[];
+  data: DailyPoint[];
 }
 
 export function MacroTrendChart({ data }: MacroTrendChartProps) {

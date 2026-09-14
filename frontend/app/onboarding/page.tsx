@@ -4,7 +4,7 @@ import { OnboardingGuard } from "@/components/onboarding/onboarding-guard";
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 
 export const metadata: Metadata = {
-  title: "Set up your account | Cals",
+  title: "Cals",
 };
 
 export default function OnboardingPage() {

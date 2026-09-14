@@ -1,4 +1,13 @@
-import type { ActivityLevel, Gender, GoalType, MealType } from "@/lib/types/api";
+import type {
+  ActivityLevel,
+  BmiCategory,
+  Gender,
+  GoalType,
+  HealthCondition,
+  MealType,
+} from "@/lib/types/api";
+
+export const MAX_PAGES = 10;
 
 export const MEAL_TYPES: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 
@@ -7,6 +16,13 @@ export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   LUNCH: "Lunch",
   DINNER: "Dinner",
   SNACK: "Snack",
+};
+
+export const MEAL_TYPE_SORT_ORDER: Record<MealType, number> = {
+  DINNER: 0,
+  SNACK: 1,
+  LUNCH: 2,
+  BREAKFAST: 3,
 };
 
 export const ACTIVITY_LEVELS: ActivityLevel[] = [
@@ -53,6 +69,35 @@ export const GOAL_TYPE_DESCRIPTIONS: Record<GoalType, string> = {
   LOSE: "A moderate calorie deficit to lose weight steadily.",
   MAINTAIN: "Enough calories to hold your current weight.",
   GAIN: "A calorie surplus to support gaining weight.",
+};
+
+export const HEALTH_CONDITIONS: HealthCondition[] = [
+  "DIABETES",
+  "HIGH_BLOOD_PRESSURE",
+  "HEART_DISEASE",
+  "KIDNEY_DISEASE",
+  "THYROID",
+  "PCOS",
+  "PREGNANT_OR_BREASTFEEDING",
+  "EATING_DISORDER",
+];
+
+export const HEALTH_CONDITION_LABELS: Record<HealthCondition, string> = {
+  DIABETES: "Diabetes or prediabetes",
+  HIGH_BLOOD_PRESSURE: "High blood pressure",
+  HEART_DISEASE: "Heart condition",
+  KIDNEY_DISEASE: "Kidney disease",
+  THYROID: "Thyroid condition",
+  PCOS: "PCOS",
+  PREGNANT_OR_BREASTFEEDING: "Pregnant or breastfeeding",
+  EATING_DISORDER: "History of an eating disorder",
+};
+
+export const BMI_CATEGORY_LABELS: Record<BmiCategory, string> = {
+  UNDERWEIGHT: "Underweight",
+  HEALTHY: "Healthy weight",
+  OVERWEIGHT: "Overweight",
+  OBESE: "Obese",
 };
 
 export const VITAMIN_MINERAL_KEYS = [

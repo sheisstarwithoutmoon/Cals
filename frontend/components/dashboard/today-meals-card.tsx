@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import Link from "next/link";
 import { UtensilsCrossedIcon } from "lucide-react";
 
@@ -10,8 +11,8 @@ import {
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { MealListItem } from "@/components/meals/meal-list-item";
-import { MEAL_TYPE_LABELS } from "@/lib/constants";
-import type { MealEntry, MealType } from "@/lib/types/api";
+import { MEAL_TYPE_SORT_ORDER } from "@/lib/constants";
+import type { MealEntry } from "@/lib/types/api";
 
 interface TodayMealsCardProps {
   meals: MealEntry[];
@@ -19,56 +20,42 @@ interface TodayMealsCardProps {
   onDeleted: (mealId: string) => void;
 }
 
-const MEAL_TYPE_ORDER: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
-
 export function TodayMealsCard({
   meals,
   onUpdated,
   onDeleted,
 }: TodayMealsCardProps) {
-  const groups = MEAL_TYPE_ORDER.map((mealType) => ({
-    mealType,
-    meals: meals.filter((meal) => meal.mealType === mealType),
-  })).filter((group) => group.meals.length > 0);
+  const sortedMeals = useMemo(() => {
+    return [...meals].sort(
+      (a, b) =>
+        (MEAL_TYPE_SORT_ORDER[a.mealType] ?? 9) -
+        (MEAL_TYPE_SORT_ORDER[b.mealType] ?? 9)
+    );
+  }, [meals]);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Today&apos;s meals</CardTitle>
-        <CardAction>
-          <Link
-            href="/meals"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            View all
-          </Link>
-        </CardAction>
+        <CardTitle>Today's meals</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {meals.length === 0 ? (
+        {sortedMeals.length === 0 ? (
           <EmptyState
             icon={UtensilsCrossedIcon}
             title="No meals logged yet today"
             description="Log your first meal to start tracking today's nutrition."
           />
         ) : (
-          groups.map((group) => (
-            <div key={group.mealType} className="space-y-2.5">
-              <h3 className="text-xs font-medium text-muted-foreground">
-                {MEAL_TYPE_LABELS[group.mealType]}
-              </h3>
-              <div className="space-y-2.5">
-                {group.meals.map((meal) => (
-                  <MealListItem
-                    key={meal.id}
-                    meal={meal}
-                    onUpdated={onUpdated}
-                    onDeleted={onDeleted}
-                  />
-                ))}
-              </div>
-            </div>
-          ))
+          <div className="space-y-2.5">
+            {sortedMeals.map((meal) => (
+              <MealListItem
+                key={meal.id}
+                meal={meal}
+                onUpdated={onUpdated}
+                onDeleted={onDeleted}
+              />
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

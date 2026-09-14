@@ -1,6 +1,7 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { MAX_PAGES } from "@/lib/constants";
 import type { Pagination } from "@/lib/types/api";
 
 interface MealPaginationProps {
@@ -12,20 +13,25 @@ export function MealPagination({
   pagination,
   onPageChange,
 }: MealPaginationProps) {
-  if (pagination.totalPages <= 1) return null;
+  const totalPages = Math.min(pagination.totalPages, MAX_PAGES);
+  if (totalPages <= 1) return null;
+
+  const currentPage = Math.min(Math.max(1, pagination.page), totalPages);
+  const hasPreviousPage = currentPage > 1;
+  const hasNextPage = currentPage < totalPages;
 
   return (
     <div className="flex items-center justify-between pt-1">
       <p className="text-xs text-muted-foreground">
-        Page {pagination.page} of {pagination.totalPages} ·{" "}
+        Page {currentPage} of {totalPages} ·{" "}
         {pagination.total} meals
       </p>
       <div className="flex gap-2">
         <Button
           variant="outline"
           size="sm"
-          disabled={!pagination.hasPreviousPage}
-          onClick={() => onPageChange(pagination.page - 1)}
+          disabled={!hasPreviousPage}
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
         >
           <ChevronLeftIcon />
           Previous
@@ -33,8 +39,8 @@ export function MealPagination({
         <Button
           variant="outline"
           size="sm"
-          disabled={!pagination.hasNextPage}
-          onClick={() => onPageChange(pagination.page + 1)}
+          disabled={!hasNextPage}
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
         >
           Next
           <ChevronRightIcon />

@@ -8,28 +8,60 @@ import { BrandLogo } from "@/components/common/brand-logo";
 import { ErrorState } from "@/components/common/error-state";
 import { StepBasicInfo } from "@/components/onboarding/step-basic-info";
 import { StepGoal } from "@/components/onboarding/step-goal";
+import { StepHealth } from "@/components/onboarding/step-health";
 import { StepIndicator } from "@/components/onboarding/step-indicator";
+import { StepTargetWeight } from "@/components/onboarding/step-target-weight";
 import { StepTargets } from "@/components/onboarding/step-targets";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnboarding } from "@/hooks/use-onboarding";
-import type { GoalType, OnboardingProfileInput } from "@/lib/types/api";
+import type {
+  BodyAssessment,
+  GoalType,
+  HealthCondition,
+  OnboardingProfileInput,
+} from "@/lib/types/api";
 
-const STEP_LABELS = ["Basic info", "Goal", "Targets"];
+type Step = 1 | 2 | 3 | 4;
+
+interface GoalState {
+  goalType: GoalType | null;
+  targetWeight: number | null;
+  weeklyWeightChangeKg: number | null;
+}
+
+const STEP_LABELS = ["Basic info", "Health", "Goal", "Targets"];
 
 export function OnboardingWizard() {
   const router = useRouter();
   const { refresh } = useAuth();
   const { status, isLoading, error, refetch } = useOnboarding();
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<Step>(1);
+  const [goalSubStep, setGoalSubStep] = useState<1 | 2>(1);
+  const [activeChangeGoal, setActiveChangeGoal] = useState<"LOSE" | "GAIN">("GAIN");
   const [profile, setProfile] = useState<Partial<OnboardingProfileInput>>({});
-  const [goalType, setGoalType] = useState<GoalType | null>(null);
+  const [health, setHealth] = useState<{ conditions: HealthCondition[]; reviewed: boolean }>({
+    conditions: [],
+    reviewed: false,
+  });
+  const [assessment, setAssessment] = useState<BodyAssessment | null>(null);
+  const [goal, setGoal] = useState<GoalState>({
+    goalType: null,
+    targetWeight: null,
+    weeklyWeightChangeKg: null,
+  });
 
   useEffect(() => {
     if (!status) return;
 
-    setStep((status.nextStep ?? 3) as 1 | 2 | 3);
-    setGoalType(status.goalType);
+    setStep((status.nextStep ?? 4) as Step);
+    setHealth({ conditions: status.healthConditions, reviewed: status.healthReviewed });
+    setAssessment(status.assessment);
+    setGoal({
+      goalType: status.goalType,
+      targetWeight: status.targetWeight,
+      weeklyWeightChangeKg: status.weeklyWeightChangeKg,
+    });
     setProfile({
       name: status.profile.name,
       age: status.profile.age ?? undefined,
@@ -80,19 +112,72 @@ export function OnboardingWizard() {
           )}
 
           {step === 2 && (
-            <StepGoal
-              initial={goalType}
+            <StepHealth
+              initial={health.conditions}
+              initiallyReviewed={health.reviewed}
               onBack={() => setStep(1)}
               onSaved={(saved) => {
-                setGoalType(saved);
+                // The assessment is recomputed here, so a height or weight
+                setHealth({ conditions: saved.healthConditions, reviewed: true });
+                setAssessment(saved.assessment);
                 setStep(3);
               }}
             />
           )}
 
-          {step === 3 && (
-            <StepTargets
+          {step === 3 && goalSubStep === 1 && (
+            <StepGoal
+              initialGoalType={goal.goalType}
+              assessment={assessment}
+              heightCm={profile.heightCm}
               onBack={() => setStep(2)}
+              onSavedMaintain={(saved) => {
+                setGoal({
+                  goalType: "MAINTAIN",
+                  targetWeight: null,
+                  weeklyWeightChangeKg: null,
+                });
+                setGoalSubStep(1);
+                setStep(4);
+              }}
+              onProceedToTargetWeight={(type) => {
+                setActiveChangeGoal(type);
+                setGoalSubStep(2);
+              }}
+            />
+          )}
+
+          {step === 3 && goalSubStep === 2 && (
+            <StepTargetWeight
+              goalType={activeChangeGoal}
+              initialTargetWeight={goal.targetWeight}
+              initialWeeklyWeightChangeKg={goal.weeklyWeightChangeKg}
+              assessment={assessment}
+              currentWeight={profile.currentWeight}
+              onBack={() => setGoalSubStep(1)}
+              onSaved={(saved) => {
+                setGoal({
+                  goalType: saved.goalType,
+                  targetWeight: saved.targetWeight ?? null,
+                  weeklyWeightChangeKg: saved.weeklyWeightChangeKg ?? null,
+                });
+                setGoalSubStep(1);
+                setStep(4);
+              }}
+            />
+          )}
+
+          {step === 4 && (
+            <StepTargets
+              onBack={() => {
+                setStep(3);
+                if (goal.goalType === "LOSE" || goal.goalType === "GAIN") {
+                  setActiveChangeGoal(goal.goalType);
+                  setGoalSubStep(2);
+                } else {
+                  setGoalSubStep(1);
+                }
+              }}
               onComplete={async () => {
                 await refresh();
                 router.replace("/dashboard");

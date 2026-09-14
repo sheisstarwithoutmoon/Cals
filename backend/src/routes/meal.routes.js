@@ -3,10 +3,14 @@ const express = require("express");
 const {
   create,
   list,
+  summary,
+  report,
+  uploadPhoto,
   getOne,
   update,
   remove,
-  importPdf,
+  previewPdfImport,
+  createBulk,
 } = require("../controllers/meal.controller");
 
 const { requireAuth } = require("../middleware/auth.middleware");
@@ -15,9 +19,14 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-router.post("/import-pdf", importPdf);
+router.post("/import-pdf/preview", previewPdfImport);
+router.post("/bulk", createBulk);
+router.post("/photo", uploadPhoto);
 router.post("/", create);
 router.get("/", list);
+// Must be registered before "/:id" so these aren't treated as meal ids.
+router.get("/summary", summary);
+router.get("/report", report);
 router.get("/:id", getOne);
 router.put("/:id", update);
 router.delete("/:id", remove);

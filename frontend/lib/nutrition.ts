@@ -74,7 +74,7 @@ export interface DailyTotal extends NutritionTotals {
  * timezone ahead of UTC (e.g. IST) — that mismatch silently dropped meals
  * from their correct day bucket below.
  */
-function toLocalDateKey(date: Date) {
+export function toLocalDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -83,15 +83,25 @@ function toLocalDateKey(date: Date) {
 
 export function buildDailyTotals(
   meals: MealEntry[],
-  days: number
+  range: number | { startDate: string; endDate: string }
 ): DailyTotal[] {
-  const now = new Date();
   const buckets = new Map<string, MealEntry[]>();
 
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    day.setDate(day.getDate() - i);
-    buckets.set(toLocalDateKey(day), []);
+  if (typeof range === "number") {
+    const now = new Date();
+    for (let i = range - 1; i >= 0; i -= 1) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      day.setDate(day.getDate() - i);
+      buckets.set(toLocalDateKey(day), []);
+    }
+  } else if (range.startDate && range.endDate) {
+    const start = new Date(`${range.startDate}T00:00:00`);
+    const end = new Date(`${range.endDate}T00:00:00`);
+    const cur = new Date(start);
+    while (cur <= end) {
+      buckets.set(toLocalDateKey(cur), []);
+      cur.setDate(cur.getDate() + 1);
+    }
   }
 
   for (const meal of meals) {

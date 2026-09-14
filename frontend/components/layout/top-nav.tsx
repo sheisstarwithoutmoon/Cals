@@ -40,7 +40,7 @@ export function TopNav() {
     <header className="sticky top-0 z-30 hidden h-16 shrink-0 border-b border-border bg-white/95 backdrop-blur-md md:flex">
       <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-10">
-          <BrandLogo size="sm" brandName="Cals" href="/dashboard" />
+          <BrandLogo size="sm" brandName="Cals" href="/" />
 
           <nav className="flex items-center gap-7">
             {NAV_ITEMS.map((item) => {
