@@ -3,10 +3,12 @@ const {
   getMealsForDay,
   getMeals,
   localDayRange,
+  addItemsToMeal,
 } = require("../meal.service");
 const { createOrUpdateGoal } = require("../goal.service");
 const {
   logMealArgsSchema,
+  addToMealArgsSchema,
   updateGoalArgsSchema,
   getDailySummaryArgsSchema,
   getWeeklySummaryArgsSchema,
@@ -41,6 +43,28 @@ function validateArgs(toolName, schema, args) {
   }
 
   return result.data;
+}
+
+async function addToMeal(userId, args, ctx) {
+  const meal = await addItemsToMeal(userId, args.mealId, args.items);
+
+  ctx.action = "MEAL_UPDATED";
+  ctx.meal = meal;
+
+  return {
+    ok: true,
+    meal: {
+      id: meal.id,
+      mealType: meal.mealType,
+      foodName: meal.foodName,
+      consumedAt: meal.consumedAt,
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat,
+      items: meal.items,
+    },
+  };
 }
 
 async function logMeal(userId, args, ctx) {
@@ -82,6 +106,7 @@ async function logMeal(userId, args, ctx) {
     ok: true,
     loggedCount: createdMeals.length,
     meals: createdMeals.map((m) => ({
+      id: m.id,
       foodName: m.foodName,
       mealType: m.mealType,
       calories: m.calories,
@@ -143,6 +168,7 @@ async function getDailySummary(userId, args, ctx) {
       ? {}
       : { note: `No ${scope} were logged on ${args.date}.` }),
     meals: meals.map((m) => ({
+      id: m.id,
       foodName: m.foodName,
       mealType: m.mealType,
       localTime: new Date(m.consumedAt.getTime() - tzOffset * 60 * 1000).toISOString().slice(11, 16),
@@ -215,6 +241,7 @@ async function getWeeklySummary(userId, args, ctx) {
 
 const TOOL_HANDLERS = {
   log_meal: { schema: logMealArgsSchema, handler: logMeal },
+  add_to_meal: { schema: addToMealArgsSchema, handler: addToMeal },
   update_goal: { schema: updateGoalArgsSchema, handler: updateGoal },
   get_daily_summary: { schema: getDailySummaryArgsSchema, handler: getDailySummary },
   get_weekly_summary: { schema: getWeeklySummaryArgsSchema, handler: getWeeklySummary },
