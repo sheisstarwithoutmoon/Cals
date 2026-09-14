@@ -15,11 +15,37 @@ async function getRecentHistory(userId, limit = HISTORY_LIMIT) {
   return messages.reverse();
 }
 
-async function getChatHistory(userId) {
-  return prisma.chatMessage.findMany({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
-  });
+async function getChatHistory(userId, filters = {}) {
+  const { page = 1, limit = 20 } = filters;
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(Math.max(1, limit), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const [messages, total] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: safeLimit,
+    }),
+    prisma.chatMessage.count({
+      where: { userId },
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / safeLimit) || 1;
+
+  return {
+    messages: messages.reverse(),
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages,
+      hasNextPage: safePage < totalPages,
+      hasPreviousPage: safePage > 1,
+    },
+  };
 }
 
 async function appendMessage(userId, { role, content, action, metadata }) {

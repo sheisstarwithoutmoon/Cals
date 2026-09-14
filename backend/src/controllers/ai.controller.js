@@ -80,9 +80,18 @@ async function chat(req, res, next) {
   }
 }
 
+const chatHistoryQuerySchema = z.object({
+  page: z.coerce.number().int().positive("Page must be at least 1").default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
 async function getChatHistory(req, res, next) {
   try {
-    const messages = await chatService.getChatHistory(req.user.id);
+    const filters = chatHistoryQuerySchema.parse(req.query);
+    const { messages, pagination } = await chatService.getChatHistory(
+      req.user.id,
+      filters
+    );
 
     res.json({
       success: true,
@@ -98,6 +107,7 @@ async function getChatHistory(req, res, next) {
         skippedCount: entry.metadata?.skippedCount,
         createdAt: entry.createdAt,
       })),
+      pagination,
     });
   } catch (error) {
     next(error);

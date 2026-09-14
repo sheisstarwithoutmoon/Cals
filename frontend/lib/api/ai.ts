@@ -89,6 +89,24 @@ export interface ChatHistoryMessage {
   createdAt: string;
 }
 
-export function getChatHistory() {
-  return apiFetch<{ success: true; data: ChatHistoryMessage[] }>("/ai/chat/history");
+export interface ChatHistoryPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export function getChatHistory(params?: { page?: number; limit?: number }) {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+
+  const queryString = query.toString();
+  return apiFetch<{
+    success: true;
+    data: ChatHistoryMessage[];
+    pagination?: ChatHistoryPagination;
+  }>(`/ai/chat/history${queryString ? `?${queryString}` : ""}`);
 }

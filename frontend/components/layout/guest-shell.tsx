@@ -33,8 +33,8 @@ export function GuestShell({ children }: { children: React.ReactNode }) {
               className="flex flex-col items-center font-bold leading-[1.0] tracking-wide text-[#237847]"
               style={{ fontFamily: "var(--font-caveat), cursive" }}
             >
-              <span className="text-3xl -rotate-3 sm:text-4xl">Better</span>
-              <span className="text-3xl rotate-1 sm:text-4xl">eating</span>
+              <span className="text-3xl -rotate-3 sm:text-4xl">better</span>
+              <span className="text-3xl rotate-1 sm:text-4xl">eating,</span>
               <span className="text-3xl -rotate-1 sm:text-4xl">brighter</span>
               <span className="text-3xl rotate-2 sm:text-4xl">days.</span>
             </div>
