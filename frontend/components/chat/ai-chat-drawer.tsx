@@ -304,6 +304,7 @@ export function AiChatDrawer({
 
       if (
         response.action === "MEAL_LOGGED" ||
+        response.action === "MEAL_UPDATED" ||
         response.action === "GOAL_UPDATED" ||
         response.action === "PDF_IMPORTED"
       ) {
@@ -385,11 +386,10 @@ export function AiChatDrawer({
                 className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}
               >
                 <div
-                  className={`flex size-7 shrink-0 items-center justify-center rounded-full ${
-                    isUser
-                      ? "bg-stone-900 text-white"
-                      : "bg-emerald-100 text-emerald-800"
-                  }`}
+                  className={`flex size-7 shrink-0 items-center justify-center rounded-full ${isUser
+                    ? "bg-stone-900 text-white"
+                    : "bg-emerald-100 text-emerald-800"
+                    }`}
                 >
                   {isUser ? (
                     <UserIcon className="size-3.5" />
@@ -401,9 +401,8 @@ export function AiChatDrawer({
                 <div className="max-w-[85%] min-w-0 space-y-2">
                   {message.attachment && (
                     <div
-                      className={`overflow-hidden rounded-2xl border ${
-                        isUser ? "border-stone-700" : "border-emerald-100"
-                      }`}
+                      className={`overflow-hidden rounded-2xl border ${isUser ? "border-stone-700" : "border-emerald-100"
+                        }`}
                     >
                       {message.attachment.kind === "IMAGE" ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -422,11 +421,10 @@ export function AiChatDrawer({
                   )}
 
                   <div
-                    className={`rounded-2xl px-4 py-3 text-xs leading-relaxed break-words sm:text-sm ${
-                      isUser
-                        ? "rounded-tr-xs bg-stone-900 text-white"
-                        : "rounded-tl-xs border border-emerald-100/60 bg-white text-stone-800 shadow-xs"
-                    }`}
+                    className={`rounded-2xl px-4 py-3 text-xs leading-relaxed break-words sm:text-sm ${isUser
+                      ? "rounded-tr-xs bg-stone-900 text-white"
+                      : "rounded-tl-xs border border-emerald-100/60 bg-white text-stone-800 shadow-xs"
+                      }`}
                   >
                     {message.text}
                   </div>
@@ -605,11 +603,10 @@ export function AiChatDrawer({
                 onClick={toggleRecording}
                 disabled={isLoading}
                 aria-label={isRecording ? "Stop recording" : "Speak your message"}
-                className={`flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
-                  isRecording
-                    ? "bg-rose-100 text-rose-600"
-                    : "text-stone-500 hover:bg-stone-100"
-                }`}
+                className={`flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors disabled:opacity-40 ${isRecording
+                  ? "bg-rose-100 text-rose-600"
+                  : "text-stone-500 hover:bg-stone-100"
+                  }`}
               >
                 {isRecording ? (
                   <Squircle className="size-4 fill-current" />

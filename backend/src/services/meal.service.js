@@ -80,8 +80,8 @@ function buildMealData(data) {
       // Json columns need Prisma.DbNull to store NULL; plain null is rejected.
       micronutrients: Object.keys(micronutrients).length
         ? Object.fromEntries(
-            Object.entries(micronutrients).map(([name, value]) => [name, roundTo(value)])
-          )
+          Object.entries(micronutrients).map(([name, value]) => [name, roundTo(value)])
+        )
         : Prisma.DbNull,
     },
     items: items.map((item, position) => ({
@@ -529,6 +529,65 @@ async function updateMeal(userId, mealId, data) {
   });
 }
 
+// to add meal to existing meal
+async function addItemsToMeal(userId, mealId, newItems) {
+  const existingMeal = await getMealById(userId, mealId);
+
+  if (!existingMeal) {
+    const error = new Error("Meal not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const existingItems = existingMeal.items.map((item) => ({
+    name: item.name,
+    quantity: item.quantity,
+    quantityUnit: item.quantityUnit,
+    calories: item.calories,
+    protein: item.protein,
+    carbs: item.carbs,
+    fat: item.fat,
+    fiber: item.fiber,
+    sugar: item.sugar,
+    sodium: item.sodium,
+    micronutrients: item.micronutrients,
+  }));
+
+  const allItems = [...existingItems, ...newItems];
+
+  // Recalculate the meal totals from all existing + new items.
+  const { mealData, items } = buildMealData({
+    items: allItems,
+  });
+
+  // buildMealData starts positions at 0, so only take the newly
+  // added items and shift their positions after the existing items.
+  const newItemRows = items
+    .slice(existingItems.length)
+    .map((item, index) => ({
+      ...item,
+      position: existingItems.length + index,
+      mealEntryId: mealId,
+    }));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.mealEntry.update({
+      where: {
+        id: mealId,
+      },
+      data: mealData,
+    });
+
+    if (newItemRows.length) {
+      await tx.mealItem.createMany({
+        data: newItemRows,
+      });
+    }
+  });
+
+  return getMealById(userId, mealId);
+}
+
 async function deleteMeal(userId, mealId) {
   const existingMeal = await getMealById(userId, mealId);
 
@@ -559,5 +618,6 @@ module.exports = {
   localDayRange,
   getMealReport,
   updateMeal,
+  addItemsToMeal,
   deleteMeal,
 };

@@ -76,6 +76,18 @@ const updateGoalArgsSchema = z
     }
   });
 
+const addToMealArgsSchema = z.object({
+  mealId: z
+    .string(typeError("mealId", "a string"))
+    .trim()
+    .min(1, "mealId is required"),
+
+  items: z
+    .array(logMealFoodSchema, typeError("items", "an array"))
+    .min(1, "items must contain at least one food")
+    .max(50, "items must contain at most 50 foods"),
+});
+
 const getDailySummaryArgsSchema = z.object({
   date: z
     .string(typeError("date", "a string"))
@@ -120,6 +132,7 @@ const getWeeklySummaryArgsSchema = z
 module.exports = {
   logMealArgsSchema,
   updateGoalArgsSchema,
+  addToMealArgsSchema,
   getDailySummaryArgsSchema,
   getWeeklySummaryArgsSchema,
 };

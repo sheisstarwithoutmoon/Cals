@@ -30,12 +30,13 @@ export interface ExtractedNutrition {
 export interface ChatResponse {
   success: boolean;
   action:
-    | "CHAT"
-    | "MEAL_LOGGED"
-    | "GOAL_CHECK"
-    | "GOAL_UPDATED"
-    | "WEEKLY_SUMMARY"
-    | "PDF_IMPORTED";
+  | "CHAT"
+  | "MEAL_LOGGED"
+  | "MEAL_UPDATED"
+  | "GOAL_CHECK"
+  | "GOAL_UPDATED"
+  | "WEEKLY_SUMMARY"
+  | "PDF_IMPORTED";
   reply: string;
   meal?: MealEntry;
   goal?: Goal;
