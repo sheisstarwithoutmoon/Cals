@@ -1,3 +1,5 @@
+const { z } = require("zod");
+
 const {
   analyzeFoodImage,
   chatWithAssistant,
@@ -27,18 +29,29 @@ async function analyzeImage(req, res, next) {
   }
 }
 
+const nutrientTotal = z.number().nonnegative().optional();
+
+const extractNutritionSchema = z.object({
+  description: z.string().trim().min(1, "description is required").max(500),
+  // Known meal totals to keep while splitting the description into items.
+  targetTotals: z
+    .object({
+      calories: nutrientTotal,
+      protein: nutrientTotal,
+      carbs: nutrientTotal,
+      fat: nutrientTotal,
+      fiber: nutrientTotal,
+      sugar: nutrientTotal,
+      sodium: nutrientTotal,
+    })
+    .optional(),
+});
+
 async function extractNutrition(req, res, next) {
   try {
-    const { description } = req.body;
+    const { description, targetTotals } = extractNutritionSchema.parse(req.body);
 
-    if (!description || !description.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "description is required",
-      });
-    }
-
-    const data = await extractNutritionFromText(description);
+    const data = await extractNutritionFromText(description, { targetTotals });
 
     res.json({
       success: true,

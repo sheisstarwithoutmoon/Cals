@@ -1,0 +1,56 @@
+import {
+  CoffeeIcon,
+  MoonIcon,
+  SoupIcon,
+  SunIcon,
+  UtensilsIcon,
+  type LucideIcon,
+} from "lucide-react";
+
+import type { MealType } from "@/lib/types/api";
+
+export type MealTypeFilter = MealType | "ALL";
+
+interface MealTypeMeta {
+  label: string;
+  icon: LucideIcon;
+  /** Background + foreground classes for the round icon tile. */
+  iconClassName: string;
+}
+
+export const MEAL_TYPE_META: Record<MealTypeFilter, MealTypeMeta> = {
+  ALL: {
+    label: "All meals",
+    icon: UtensilsIcon,
+    iconClassName: "bg-emerald-100 text-emerald-700",
+  },
+  BREAKFAST: {
+    label: "Breakfast",
+    icon: SunIcon,
+    iconClassName: "bg-amber-100 text-amber-600",
+  },
+  LUNCH: {
+    label: "Lunch",
+    icon: SoupIcon,
+    iconClassName: "bg-emerald-100 text-emerald-700",
+  },
+  SNACK: {
+    label: "Snacks",
+    icon: CoffeeIcon,
+    iconClassName: "bg-sky-100 text-sky-600",
+  },
+  DINNER: {
+    label: "Dinner",
+    icon: MoonIcon,
+    iconClassName: "bg-violet-100 text-violet-600",
+  },
+};
+
+/** Display order of the meal type tabs. */
+export const MEAL_TYPE_FILTERS: MealTypeFilter[] = [
+  "ALL",
+  "BREAKFAST",
+  "LUNCH",
+  "SNACK",
+  "DINNER",
+];

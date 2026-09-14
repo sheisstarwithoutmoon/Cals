@@ -1,6 +1,7 @@
 const {
   profileSchema,
   goalTypeInputSchema,
+  healthInputSchema,
   targetsSchema,
 } = require("../schemas/onboarding.schema");
 
@@ -8,6 +9,7 @@ const {
   getOnboardingStatus,
   saveProfile,
   saveGoalType,
+  saveHealthConditions,
   getSuggestedTargets,
   completeOnboarding,
 } = require("../services/onboarding.service");
@@ -39,14 +41,28 @@ async function updateProfile(req, res, next) {
   }
 }
 
-async function updateGoalType(req, res, next) {
+async function updateHealth(req, res, next) {
   try {
-    const { goalType } = goalTypeInputSchema.parse(req.body);
-    await saveGoalType(req.user.id, goalType);
+    const { healthConditions } = healthInputSchema.parse(req.body);
+    const result = await saveHealthConditions(req.user.id, healthConditions);
 
     res.json({
       success: true,
-      goalType,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateGoalType(req, res, next) {
+  try {
+    const data = goalTypeInputSchema.parse(req.body);
+    const saved = await saveGoalType(req.user.id, data);
+
+    res.json({
+      success: true,
+      ...saved,
     });
   } catch (error) {
     next(error);
@@ -55,11 +71,11 @@ async function updateGoalType(req, res, next) {
 
 async function suggestedTargets(req, res, next) {
   try {
-    const targets = await getSuggestedTargets(req.user.id);
+    const suggestion = await getSuggestedTargets(req.user.id);
 
     res.json({
       success: true,
-      targets,
+      ...suggestion,
     });
   } catch (error) {
     next(error);
@@ -84,6 +100,7 @@ module.exports = {
   getStatus,
   updateProfile,
   updateGoalType,
+  updateHealth,
   suggestedTargets,
   complete,
 };

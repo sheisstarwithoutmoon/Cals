@@ -13,7 +13,7 @@ export default function ForgotPasswordPage() {
         <MailIcon className="size-6" />
       </div>
       <h1 className="mt-4 font-heading text-xl font-bold text-foreground">
-        Password reset isn&apos;t available yet
+        Password reset isn't available yet
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Contact support to reset your password for now.

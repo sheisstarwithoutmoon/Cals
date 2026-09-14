@@ -13,9 +13,9 @@ interface GoalProgressPreviewProps {
 
 export function GoalProgressPreview({ goal, totals }: GoalProgressPreviewProps) {
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="flex h-full flex-col rounded-2xl">
       <CardHeader>
-        <CardTitle>Today&apos;s progress</CardTitle>
+        <CardTitle>Today's progress</CardTitle>
       </CardHeader>
       <CardContent className="flex-1">
         {!goal ? (

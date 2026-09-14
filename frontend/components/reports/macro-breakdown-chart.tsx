@@ -6,27 +6,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PieChartIcon } from "lucide-react";
 import { formatNumber } from "@/lib/format";
-import type { NutritionTotals } from "@/lib/nutrition";
+import type { EnergySource } from "@/lib/reports";
 
 interface MacroBreakdownChartProps {
-  totals: NutritionTotals;
+  sources: EnergySource[];
 }
 
 const COLORS = ["#2563eb", "#ca8a04", "#c1402e"];
 
-export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
-  const data = [
-    { name: "Protein", value: totals.protein },
-    { name: "Carbs", value: totals.carbs },
-    { name: "Fat", value: totals.fat },
-  ];
-
-  const hasData = data.some((entry) => entry.value > 0);
+/**
+ * Share of calories from protein, carbs and fat (grams converted to kcal).
+ * Grams per day are already on "Macros by day", so this shows energy instead.
+ */
+export function MacroBreakdownChart({ sources }: MacroBreakdownChartProps) {
+  const hasData = sources.some((entry) => entry.calories > 0);
 
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>
-        <CardTitle>Macro breakdown</CardTitle>
+        <CardTitle>Calories by macro</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
         {!hasData ? (
@@ -34,7 +32,7 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
             <EmptyState
               icon={PieChartIcon}
               title="No macro data yet"
-              description="Log meals with protein, carbs and fat to see the breakdown."
+              description="Log meals with protein, carbs and fat to see where your calories come from."
             />
           </div>
         ) : (
@@ -43,9 +41,9 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie
-                    data={data}
-                    dataKey="value"
-                    nameKey="name"
+                    data={sources}
+                    dataKey="calories"
+                    nameKey="label"
                     cx="50%"
                     cy="50%"
                     innerRadius={55}
@@ -53,8 +51,8 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
                     paddingAngle={3}
                     strokeWidth={0}
                   >
-                    {data.map((entry, index) => (
-                      <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                    {sources.map((entry, index) => (
+                      <Cell key={entry.key} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -65,8 +63,8 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
                       fontSize: 12,
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     }}
-                    formatter={(value, name) => [
-                      `${formatNumber(Number(value))} g`,
+                    formatter={(value, name, item) => [
+                      `${formatNumber(Number(value))} kcal/day (${(item.payload as EnergySource).percent}%)`,
                       String(name),
                     ]}
                   />
@@ -74,13 +72,13 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
               </ResponsiveContainer>
             </div>
             <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1.5 pb-2 text-xs text-muted-foreground">
-              {data.map((entry, index) => (
-                <span key={entry.name} className="flex items-center gap-1.5 whitespace-nowrap">
+              {sources.map((entry, index) => (
+                <span key={entry.key} className="flex items-center gap-1.5 whitespace-nowrap">
                   <span
                     className="size-2 shrink-0 rounded-full"
                     style={{ background: COLORS[index % COLORS.length] }}
                   />
-                  {entry.name} · {formatNumber(entry.value)}g
+                  {entry.label} · {entry.percent}%
                 </span>
               ))}
             </div>

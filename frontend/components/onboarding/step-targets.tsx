@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api/client";
 import * as onboardingApi from "@/lib/api/onboarding";
-import type { OnboardingTargets } from "@/lib/types/api";
+import { formatNumber } from "@/lib/format";
+import type {
+  OnboardingTargets,
+  WeightPlan,
+} from "@/lib/types/api";
 
 interface StepTargetsProps {
   onBack: () => void;
@@ -67,6 +71,7 @@ function validate(form: FormState) {
 export function StepTargets({ onBack, onComplete }: StepTargetsProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(true);
+  const [plan, setPlan] = useState<WeightPlan | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,8 +82,11 @@ export function StepTargets({ onBack, onComplete }: StepTargetsProps) {
     async function loadSuggestion() {
       setIsLoadingSuggestion(true);
       try {
-        const { targets } = await onboardingApi.getSuggestedTargets();
-        if (isMounted) setForm(toFormState(targets));
+        const suggestion = await onboardingApi.getSuggestedTargets();
+        if (isMounted) {
+          setForm(toFormState(suggestion.targets));
+          setPlan(suggestion.plan);
+        }
       } catch (error) {
         if (isMounted) {
           setFormError(
@@ -156,11 +164,33 @@ export function StepTargets({ onBack, onComplete }: StepTargetsProps) {
         </p>
       </div>
 
+      {plan && (
+        <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-xs leading-relaxed text-stone-600">
+          <p className="text-sm font-semibold text-stone-900">
+            {formatNumber(plan.currentWeight, 1)} kg to {formatNumber(plan.targetWeight, 1)} kg
+            {plan.weeksToGoal != null &&
+              ` in about ${plan.weeksToGoal} ${plan.weeksToGoal === 1 ? "week" : "weeks"}`}
+          </p>
+          <p>
+            Eating{" "}
+            {formatNumber(Math.abs(plan.dailyCalorieAdjustment))} kcal a day{" "}
+            {plan.goalType === "LOSE" ? "below" : "above"} maintenance, about{" "}
+            {formatNumber(plan.appliedWeeklyChangeKg, 2)} kg per week.
+          </p>
+          {plan.limitedByMinimumCalories && (
+            <p className="text-amber-700">
+              Your chosen pace of {plan.weeklyWeightChangeKg} kg per week would put you below
+              1,200 kcal a day, so the target is held at that minimum and the pace is slower.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-xs leading-relaxed text-stone-600">
         We estimate your base energy needs from age, height, weight, and
-        activity, then adjust it for losing, maintaining, or gaining weight.
-        These are starting estimates, not medical advice. Review and change any
-        value before finishing.
+        activity, then adjust it for your goal and pace. These are starting
+        estimates, not medical advice. Review and change any value before
+        finishing.
       </div>
 
       <div className="space-y-1.5">

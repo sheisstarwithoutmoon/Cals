@@ -8,23 +8,32 @@ datasource db {
 }
 
 model User {
-  id                  String         @id @default(cuid())
-  name                String
-  email               String         @unique
-  passwordHash        String?
-  googleId            String?        @unique
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  age                 Int?
-  gender              Gender?
-  heightCm            Float?
-  currentWeight       Float?
-  activityLevel       ActivityLevel?
-  goalType            GoalType?
-  onboardingCompleted Boolean        @default(false)
-  chatMessages        ChatMessage[]
-  goal                Goal?
-  mealEntries         MealEntry[]
+  id                   String         @id @default(cuid())
+  name                 String
+  email                String         @unique
+  passwordHash         String?
+  googleId             String?        @unique
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  age                  Int?
+  gender               Gender?
+  heightCm             Float?
+  currentWeight        Float?
+  activityLevel        ActivityLevel?
+  goalType             GoalType?
+  /// Weight the user wants to reach (kg), asked during onboarding for LOSE/GAIN.
+  targetWeight         Float?
+  /// Planned weight change per week (kg) for LOSE/GAIN; sets the calorie adjustment.
+  weeklyWeightChangeKg Float?
+  /// Health condition keys the user reported (see body-assessment.service.js).
+  healthConditions     String[]       @default([])
+  /// When the user answered the health question; null means not asked yet,
+  /// which an empty `healthConditions` alone can't express.
+  healthReviewedAt     DateTime?
+  onboardingCompleted  Boolean        @default(false)
+  chatMessages         ChatMessage[]
+  goal                 Goal?
+  mealEntries          MealEntry[]
 }
 
 model Goal {
@@ -61,10 +70,35 @@ model MealEntry {
   updatedAt      DateTime        @updatedAt
   attachmentUrl  String?
   attachmentType AttachmentType?
+  items          MealItem[]
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, consumedAt])
   @@index([userId, mealType])
+}
+
+/// One food item within a meal. The parent MealEntry's nutrition fields hold
+/// the sum of its items, so totals/reports never need to join this table.
+model MealItem {
+  id             String    @id @default(cuid())
+  mealEntryId    String
+  position       Int       @default(0)
+  name           String
+  quantity       Float?
+  quantityUnit   String?
+  calories       Float
+  protein        Float?
+  carbs          Float?
+  fat            Float?
+  fiber          Float?
+  sugar          Float?
+  sodium         Float?
+  micronutrients Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  mealEntry      MealEntry @relation(fields: [mealEntryId], references: [id], onDelete: Cascade)
+
+  @@index([mealEntryId, position])
 }
 
 model ChatMessage {

@@ -1,6 +1,6 @@
 const { GoogleGenAI, Type } = require("@google/genai");
-const prisma = require("../config/prisma");
-const { getMeals, createMeal } = require("./meal.service");
+const { Prisma } = require("../generated/prisma/client");
+const { getMeals, createMeal, createMealsBulk, buildMealData } = require("./meal.service");
 const { getGoalByUserId, createOrUpdateGoal } = require("./goal.service");
 const { loadPrompt } = require("../utils/load-prompt");
 const { uploadAttachment } = require("./upload.service");
@@ -9,6 +9,7 @@ const chatService = require("./chat.service");
 const imageNutritionPrompt = loadPrompt("image-nutrition.prompt.md");
 const mealExtractionPrompt = loadPrompt("meal-extraction.prompt.md");
 const pdfDiaryImportPrompt = loadPrompt("pdf-diary-import.prompt.md");
+const mealItemSplitPrompt = loadPrompt("meal-item-split.prompt.md");
 // Only used by the no-API-key / error fallback path below — the main
 // conversational turn uses assistant-conversation.prompt.md instead.
 const nutritionQuestionPrompt = loadPrompt(
@@ -59,6 +60,121 @@ function normalizeNutritionValues(raw) {
     sugar: Math.max(0, Math.round((raw.sugar || 0) * 10) / 10),
     sodium: Math.max(0, Math.round((raw.sodium || 0) * 10) / 10),
   };
+}
+
+/** Keeps only finite, non-negative micronutrient numbers from LLM output. */
+function normalizeMicronutrients(raw) {
+  if (!raw || typeof raw !== "object") return {};
+
+  return Object.fromEntries(
+    Object.entries(raw)
+      .map(([name, value]) => [name, Number(value)])
+      .filter(([, value]) => Number.isFinite(value) && value >= 0)
+  );
+}
+
+/**
+ * Coerces one raw food item (LLM output or a PDF row) into the shape a
+ * MealItem is saved with. Returns null when it has no usable name or calorie
+ * value, so the caller can skip it.
+ */
+function normalizeMealItem(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const name = String(raw.name ?? raw.foodName ?? "").trim().slice(0, 120);
+  const calories = Number(raw.calories);
+
+  if (!name || !Number.isFinite(calories)) return null;
+
+  const quantity = Number(raw.quantity);
+
+  return {
+    name,
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    quantityUnit: String(raw.quantityUnit || "serving").slice(0, 50),
+    ...normalizeNutritionValues({ ...raw, calories }),
+    micronutrients: normalizeMicronutrients(raw.micronutrients),
+  };
+}
+
+/**
+ * Builds the meal-level result the meal form consumes from a list of
+ * normalized items: meal totals are summed from the items by the same
+ * `buildMealData` the meal service saves with, so the estimate the user sees
+ * matches what gets stored.
+ */
+function buildMealEstimate({ description, mealType, items, confidence }) {
+  const { mealData } = buildMealData({ foodName: description, items });
+
+  return {
+    foodName: mealData.foodName,
+    mealType: VALID_MEAL_TYPES.includes(mealType) ? mealType : "LUNCH",
+    quantity: mealData.quantity ?? undefined,
+    quantityUnit: mealData.quantityUnit ?? undefined,
+    calories: mealData.calories,
+    protein: mealData.protein,
+    carbs: mealData.carbs,
+    fat: mealData.fat,
+    fiber: mealData.fiber,
+    sugar: mealData.sugar,
+    sodium: mealData.sodium,
+    micronutrients: mealData.micronutrients === Prisma.DbNull ? {} : mealData.micronutrients,
+    items,
+    confidence,
+  };
+}
+
+/**
+ * Parses meal-extraction LLM output into a meal estimate with items. Accepts
+ * the item-list shape the prompt asks for, and the older single-object shape
+ * (one combined food) as a one-item meal. Returns null if nothing usable.
+ */
+function parseMealExtraction(parsed, description) {
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const rawItems = Array.isArray(parsed.items)
+    ? parsed.items
+    : typeof parsed.calories === "number"
+      ? [{ ...parsed, name: parsed.foodName || description }]
+      : [];
+
+  const items = rawItems.map(normalizeMealItem).filter(Boolean);
+  if (!items.length) return null;
+
+  return buildMealEstimate({
+    description,
+    mealType: parsed.mealType,
+    items,
+    confidence: parsed.confidence || 0.85,
+  });
+}
+
+/**
+ * Offline estimate (no API key / AI failure): splits the description into
+ * items on commas, "and", "with" and "+", and gives each a rough keyword-based
+ * estimate so the form still gets a per-item breakdown to correct.
+ */
+function fallbackMealEstimate(description) {
+  const names = description
+    .split(/,|\+|\band\b|\bwith\b/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+
+  const overall = fallbackNutritionEstimate(description);
+  const items = (names.length ? names : [description.trim()])
+    .map((name) => {
+      const estimate = fallbackNutritionEstimate(name);
+      return normalizeMealItem({ ...estimate, name });
+    })
+    .filter(Boolean);
+
+  return buildMealEstimate({
+    description,
+    mealType: overall.mealType,
+    items,
+    confidence: 0.5,
+  });
 }
 
 /**
@@ -185,7 +301,7 @@ function parseGoalUpdate(message) {
  * calls below share one request shape instead of three slightly different
  * ones (the old file called `model.generateContent` three separate ways).
  */
-async function generateWithGemini({ model, promptText, filePart }) {
+async function generateWithGemini({ model, promptText, filePart, json = false }) {
   const contents = filePart
     ? [{ text: promptText }, filePart]
     : promptText;
@@ -193,46 +309,316 @@ async function generateWithGemini({ model, promptText, filePart }) {
   const result = await genAI.models.generateContent({
     model,
     contents,
+    // Structured extraction should be repeatable: the same food name or PDF
+    // row must not produce different numbers on every run.
+    ...(json
+      ? { config: { temperature: 0, responseMimeType: "application/json" } }
+      : {}),
   });
 
   return result.text;
 }
 
-/**
- * Coerces and validates one raw meal-entry row from a PDF diary import into
- * the shape mealEntry.create/createMany expects. Returns null (so the row
- * is skipped and reported, not silently mis-dated) if it's missing a usable
- * calorie count or a real date — a diary row with no readable date has no
- * business being dated "today" just because that's when the import ran.
- */
-function normalizeMealEntry(raw, userId) {
-  if (!raw || typeof raw.calories !== "number") return null;
-  if (!raw.date) return null;
+const ITEM_NUTRIENT_KEYS = ["calories", "protein", "carbs", "fat", "fiber", "sugar", "sodium"];
 
-  const mealType = VALID_MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "LUNCH";
-  const consumedAt = new Date(`${raw.date}T${MEAL_TYPE_DEFAULT_TIME[mealType]}`);
-  if (Number.isNaN(consumedAt.getTime())) return null;
-
-  return {
-    userId,
-    mealType,
-    foodName: raw.foodName || "Imported Meal",
-    quantity: Number(raw.quantity) || 1,
-    quantityUnit: raw.quantityUnit || "serving",
-    ...normalizeNutritionValues(raw),
-    micronutrients: raw.micronutrients || {},
-    consumedAt,
-    source: "PDF_IMPORT",
-  };
+function roundToDigits(value, digits) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
 }
 
 /**
- * Parses a food-diary/nutrition-history PDF (tabular export) and bulk-
- * imports every recognizable row as a meal entry. Rows the model can't
- * confidently extract a calorie value for are skipped and reported back,
- * rather than failing the entire import.
+ * Rescales items so each nutrient in `targets` sums exactly to its target,
+ * keeping each item's relative share. Used when the meal's totals are
+ * already known (a PDF row's values, or a meal being edited) and the AI is
+ * only asked to split it into parts: its per-item estimates set the split,
+ * while the known totals stay authoritative. Nutrients missing from
+ * `targets` are left as estimated.
  */
-async function importMealsFromPdf({ userId, pdfBase64 }) {
+function scaleItemsToTotals(items, targets) {
+  if (!items.length || !targets) return items;
+
+  const scaled = items.map((item) => ({ ...item }));
+  const calorieSum = items.reduce((sum, item) => sum + (item.calories || 0), 0);
+
+  for (const key of ITEM_NUTRIENT_KEYS) {
+    const target = targets[key];
+    if (typeof target !== "number" || !Number.isFinite(target) || target < 0) continue;
+
+    const digits = key === "calories" ? 0 : 1;
+    const sum = items.reduce((total, item) => total + (item[key] || 0), 0);
+    // Split by this nutrient's own estimate; if the AI gave it 0 everywhere,
+    // fall back to each item's calorie share, then to an even split.
+    const shares = items.map((item) =>
+      sum > 0
+        ? (item[key] || 0) / sum
+        : calorieSum > 0
+          ? (item.calories || 0) / calorieSum
+          : 1 / items.length
+    );
+
+    let assigned = 0;
+    scaled.forEach((item, index) => {
+      item[key] = roundToDigits(target * shares[index], digits);
+      assigned += item[key];
+    });
+
+    // Put the rounding remainder on the largest item so the parts add up exactly.
+    const largest = shares.indexOf(Math.max(...shares));
+    scaled[largest][key] = Math.max(
+      0,
+      roundToDigits(scaled[largest][key] + (target - assigned), digits)
+    );
+  }
+
+  return scaled;
+}
+
+/**
+ * Coerces and validates one raw food row from a PDF diary import. Returns
+ * null (so the row is skipped and reported, not silently mis-dated) when it
+ * has no real date — a diary row with no readable date has no business being
+ * dated "today" just because that's when the import ran.
+ *
+ * Diaries may or may not carry nutrition columns. When the row's values came
+ * from the PDF (`nutritionFromPdf`), they're the source of truth and the
+ * items are rescaled to add up to them. Otherwise the items' own estimates
+ * are used. A row that came back with no usable values at all is marked
+ * `pending` so `splitCombinedRows` estimates it from its name and quantity.
+ */
+function normalizePdfRow(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (typeof raw.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw.date)) return null;
+  if (Number.isNaN(new Date(`${raw.date}T00:00:00`).getTime())) return null;
+
+  const mealType = VALID_MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "LUNCH";
+  const name = String(raw.foodName || "").trim() || "Imported item";
+  const rowItem = normalizeMealItem({ ...raw, name });
+  const hasPdfValues = raw.nutritionFromPdf !== false && Boolean(rowItem);
+
+  const totals = hasPdfValues
+    ? Object.fromEntries(
+        ITEM_NUTRIENT_KEYS.filter((key) => Number.isFinite(Number(raw[key]))).map((key) => [
+          key,
+          rowItem[key],
+        ])
+      )
+    : {};
+
+  // Capture any image URL the model found in the PDF row.
+  const imageUrl =
+    typeof raw.imageUrl === "string" && /^https?:\/\//i.test(raw.imageUrl)
+      ? raw.imageUrl
+      : null;
+
+  const parts = Array.isArray(raw.items)
+    ? raw.items.map(normalizeMealItem).filter(Boolean)
+    : [];
+
+  if (parts.length) {
+    return {
+      date: raw.date,
+      mealType,
+      totals,
+      imageUrl,
+      items: hasPdfValues ? scaleItemsToTotals(parts, totals) : parts,
+    };
+  }
+
+  if (rowItem) {
+    return { date: raw.date, mealType, totals, imageUrl, items: [rowItem] };
+  }
+
+  const quantity = Number(raw.quantity);
+  return {
+    date: raw.date,
+    mealType,
+    totals,
+    imageUrl,
+    items: [],
+    pending: {
+      name,
+      quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+      quantityUnit: String(raw.quantityUnit || "serving").slice(0, 50),
+    },
+  };
+}
+
+// Keeps each split request small enough for the model to handle reliably.
+const SPLIT_BATCH_SIZE = 40;
+
+function splitKey(item) {
+  // `item` is either a normalized item or a pending row's name/quantity.
+  return `${item.name.trim().toLowerCase()}|${item.quantity}|${item.quantityUnit.trim().toLowerCase()}`;
+}
+
+/**
+ * Second pass over PDF rows: the model reading a whole PDF often copies a
+ * combined row ("Rice cakes with almond butter") as one food, so every row
+ * still holding a single item has its name sent to a short text-only split
+ * request. Parts come back with estimated values that only set the split;
+ * they're rescaled to the row's PDF values. Identical names are sent once.
+ * If splitting fails, rows are returned unsplit rather than failing the
+ * import.
+ */
+async function splitCombinedRows(rows) {
+  const sourceOf = (row) => row.pending ?? (row.items.length === 1 ? row.items[0] : null);
+
+  if (!genAI) return rows;
+
+  const uniqueEntries = new Map();
+  for (const row of rows) {
+    const source = sourceOf(row);
+    if (!source) continue;
+    const key = splitKey(source);
+    if (!uniqueEntries.has(key)) {
+      const { name, quantity, quantityUnit } = source;
+      uniqueEntries.set(key, { index: uniqueEntries.size, name, quantity, quantityUnit });
+    }
+  }
+
+  const entries = Array.from(uniqueEntries.values());
+  if (!entries.length) return rows;
+
+  const batches = [];
+  for (let start = 0; start < entries.length; start += SPLIT_BATCH_SIZE) {
+    batches.push(entries.slice(start, start + SPLIT_BATCH_SIZE));
+  }
+
+  const partsByIndex = new Map();
+
+  await Promise.all(
+    batches.map(async (batch) => {
+      try {
+        const responseText = await generateWithGemini({
+          model: MEAL_EXTRACTION_MODEL,
+          promptText: mealItemSplitPrompt.replace("{{entries}}", JSON.stringify(batch)),
+          json: true,
+        });
+        const parsed = cleanJson(responseText);
+
+        for (const result of Array.isArray(parsed) ? parsed : []) {
+          const parts = Array.isArray(result?.items)
+            ? result.items.map(normalizeMealItem).filter(Boolean)
+            : [];
+          if (Number.isInteger(result?.index) && parts.length) {
+            partsByIndex.set(result.index, parts);
+          }
+        }
+      } catch (err) {
+        console.warn("Splitting PDF rows into items failed for a batch, keeping them whole:", err.message);
+      }
+    })
+  );
+
+  return rows.map((row) => {
+    const source = sourceOf(row);
+    if (!source) return row;
+
+    const entry = uniqueEntries.get(splitKey(source));
+    const parts = entry && partsByIndex.get(entry.index);
+
+    // A pending row takes whatever came back, even a single estimated item;
+    // an already-valued row is only replaced when it actually split.
+    if (row.pending) {
+      return parts ? { ...row, pending: undefined, items: scaleItemsToTotals(parts, row.totals) } : row;
+    }
+
+    return parts && parts.length >= 2
+      ? { ...row, items: scaleItemsToTotals(parts, row.totals) }
+      : row;
+  });
+}
+
+/**
+ * Groups normalized PDF rows into meal drafts: every row sharing a date and
+ * meal type becomes one item of the same meal, in the order rows appeared.
+ * Each draft carries its totals (summed like a saved meal) for display, plus
+ * a calendar `date` and default `time` so the client can build the local
+ * timestamp — the server doesn't know the user's timezone.
+ */
+function groupPdfRowsIntoMeals(rows) {
+  const drafts = new Map();
+
+  for (const row of rows) {
+    const key = `${row.date}|${row.mealType}`;
+
+    if (!drafts.has(key)) {
+      drafts.set(key, {
+        date: row.date,
+        time: MEAL_TYPE_DEFAULT_TIME[row.mealType].slice(0, 5),
+        mealType: row.mealType,
+        items: [],
+        imageUrl: null,
+      });
+    }
+
+    const draft = drafts.get(key);
+    draft.items.push(...row.items);
+    // Use the first image URL found among rows in the same meal group.
+    if (!draft.imageUrl && row.imageUrl) {
+      draft.imageUrl = row.imageUrl;
+    }
+  }
+
+  return Array.from(drafts.values()).map((draft) => {
+    const { mealData } = buildMealData({ items: draft.items });
+    return {
+      ...draft,
+      foodName: mealData.foodName,
+      calories: mealData.calories,
+      protein: mealData.protein,
+      carbs: mealData.carbs,
+      fat: mealData.fat,
+      fiber: mealData.fiber,
+      sugar: mealData.sugar,
+      sodium: mealData.sodium,
+    };
+  });
+}
+
+/**
+ * Downloads food images referenced by URL in PDF rows and uploads them to
+ * Cloudinary. Each meal draft's `imageUrl` (a URL found in the PDF) is
+ * fetched, uploaded, and replaced with a Cloudinary `attachmentUrl`. Failures
+ * are silently ignored — a missing image should never block an import.
+ */
+async function uploadPdfMealImages(meals) {
+  const draftsWithImages = meals.filter((m) => m.imageUrl);
+  if (!draftsWithImages.length) return meals;
+
+  await Promise.all(
+    draftsWithImages.map(async (draft) => {
+      try {
+        const response = await fetch(draft.imageUrl, { signal: AbortSignal.timeout(10_000) });
+        if (!response.ok) return;
+
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.startsWith("image/")) return;
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
+        const url = await uploadAttachment(base64, "cals/meal-photos");
+
+        if (url) {
+          draft.attachmentUrl = url;
+          draft.attachmentType = "IMAGE";
+        }
+      } catch (err) {
+        console.warn(`Failed to download/upload PDF image ${draft.imageUrl}:`, err.message);
+      }
+    })
+  );
+
+  return meals;
+}
+
+/**
+ * Parses a food-diary/nutrition-history PDF (tabular export) into meal
+ * drafts without saving anything, so the user can review, edit and pick
+ * which meals to add. Rows without a usable date or calorie value are
+ * skipped and counted rather than failing the whole parse.
+ */
+async function parseMealsFromPdf({ pdfBase64 }) {
   if (!pdfBase64) {
     throw new Error("PDF data is required");
   }
@@ -241,55 +627,85 @@ async function importMealsFromPdf({ userId, pdfBase64 }) {
   const approxBytes = Math.floor((base64Data.length * 3) / 4);
 
   if (approxBytes > MAX_INLINE_PDF_BYTES) {
-    throw new Error(
-      "PDF is too large for inline import (>20MB). Split the export into smaller date ranges, or use the Gemini Files API for large uploads."
+    const error = new Error(
+      "This PDF is larger than 20 MB. Split the export into smaller date ranges and import them separately."
     );
+    error.statusCode = 413;
+    throw error;
   }
 
   if (!genAI) {
     throw new Error("PDF import requires the Gemini API to be configured (GEMINI_API_KEY missing).");
   }
 
-  const filePart = {
-    inlineData: {
-      data: base64Data,
-      mimeType: "application/pdf",
-    },
-  };
-
   const responseText = await generateWithGemini({
     model: PDF_IMPORT_MODEL,
     promptText: pdfDiaryImportPrompt,
-    filePart,
+    json: true,
+    filePart: {
+      inlineData: {
+        data: base64Data,
+        mimeType: "application/pdf",
+      },
+    },
   });
 
   const parsed = cleanJson(responseText);
   const rawEntries = Array.isArray(parsed) ? parsed : [];
 
   if (!rawEntries.length) {
-    throw new Error("Could not find any recognizable meal entries in the PDF.");
+    const error = new Error("Couldn't find any meal rows in this PDF.");
+    error.statusCode = 422;
+    throw error;
   }
 
-  const normalizedEntries = rawEntries
-    .map((entry) => normalizeMealEntry(entry, userId))
-    .filter(Boolean);
+  const normalizedRows = rawEntries.map(normalizePdfRow).filter(Boolean);
+  // Rows still pending couldn't be estimated either, so they're skipped.
+  const rows = (await splitCombinedRows(normalizedRows)).filter((row) => row.items.length);
 
-  const skippedCount = rawEntries.length - normalizedEntries.length;
-
-  if (!normalizedEntries.length) {
-    throw new Error("Found rows in the PDF, but none had a usable date and calorie value.");
+  if (!rows.length) {
+    const error = new Error(
+      "Found rows in the PDF, but couldn't read a date and food for any of them."
+    );
+    error.statusCode = 422;
+    throw error;
   }
 
-  const created = await prisma.mealEntry.createMany({
-    data: normalizedEntries,
-  });
+  return {
+    meals: await uploadPdfMealImages(groupPdfRowsIntoMeals(rows)),
+    rowCount: rawEntries.length,
+    skippedCount: rawEntries.length - rows.length,
+  };
+}
+
+/**
+ * Parses a diary PDF and saves every meal in it immediately. Used by the chat
+ * assistant, which has no review step; the Meals page previews first via
+ * `parseMealsFromPdf` and saves the chosen meals through the bulk endpoint.
+ */
+async function importMealsFromPdf({ userId, pdfBase64 }) {
+  const { meals, skippedCount } = await parseMealsFromPdf({ pdfBase64 });
+
+  const { mealCount, itemCount } = await createMealsBulk(
+    userId,
+    meals.map((draft) => ({
+      mealType: draft.mealType,
+      consumedAt: new Date(`${draft.date}T${draft.time}:00`),
+      source: "PDF_IMPORT",
+      attachmentUrl: draft.attachmentUrl || null,
+      attachmentType: draft.attachmentUrl ? "IMAGE" : null,
+      items: draft.items,
+    }))
+  );
 
   return {
     action: "PDF_IMPORTED",
-    importedCount: created.count,
+    importedCount: mealCount,
+    itemCount,
     skippedCount,
-    sampleEntries: normalizedEntries.slice(0, 5),
-    reply: `Imported ${created.count} meal entries from the PDF${
+    reply: `Imported ${mealCount} ${mealCount === 1 ? "meal" : "meals"} (${itemCount} ${
+      itemCount === 1 ? "item" : "items"
+    }) from the PDF${
       skippedCount ? ` (${skippedCount} rows skipped — missing or unrecognizable data)` : ""
     }.`,
   };
@@ -324,35 +740,35 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
         model: VISION_MODEL,
         promptText: imageNutritionPrompt,
         filePart: imagePart,
+        json: true,
       });
       const parsed = cleanJson(responseText);
+      const estimate = parseMealExtraction(parsed, parsed?.foodName || "Photo meal");
 
-      if (!parsed || typeof parsed.calories !== "number") {
-        console.warn(
-          "Gemini vision response didn't match the expected schema, falling back to smart extractor. Raw response:",
-          responseText
-        );
+      if (estimate) {
+        return { ...estimate, confidence: parsed.confidence || 0.9, ...attachment };
       }
 
-      if (parsed && typeof parsed.calories === "number") {
-        return {
-          foodName: parsed.foodName || "Identified Meal",
-          mealType: VALID_MEAL_TYPES.includes(parsed.mealType) ? parsed.mealType : "LUNCH",
-          quantity: Number(parsed.quantity) || 1,
-          quantityUnit: parsed.quantityUnit || "serving",
-          ...normalizeNutritionValues(parsed),
-          micronutrients: parsed.micronutrients || {},
-          confidence: parsed.confidence || 0.92,
-          ...attachment,
-        };
-      }
+      console.warn(
+        "Gemini vision response didn't match the expected schema, falling back to smart extractor. Raw response:",
+        responseText
+      );
     } catch (err) {
       console.warn("Gemini vision analysis encountered error, falling back to smart extractor:", err.message);
     }
   }
 
   // Fallback estimation
-  return { ...fallbackNutritionEstimate("Analyzed Food Photo"), ...attachment };
+  const fallback = fallbackNutritionEstimate("Photo meal");
+  return {
+    ...buildMealEstimate({
+      description: "Photo meal",
+      mealType: fallback.mealType,
+      items: [normalizeMealItem({ ...fallback, name: "Photo meal" })],
+      confidence: 0.5,
+    }),
+    ...attachment,
+  };
 }
 
 /**
@@ -360,37 +776,49 @@ async function analyzeFoodImage({ imageBase64, mimeType = "image/jpeg" }) {
  * comma-separated list of items in one meal) without an image — used by the
  * "Estimate with AI" action in the manual meal-logging form.
  */
-async function extractNutritionFromText(description) {
+async function extractNutritionFromText(description, { targetTotals } = {}) {
   if (!description || !description.trim()) {
     throw new Error("A food description is required");
   }
 
+  const trimmed = description.trim();
+  let estimate = null;
+
   if (genAI) {
     try {
-      const prompt = mealExtractionPrompt.replace("{{message}}", description.trim());
+      const prompt = mealExtractionPrompt.replace("{{message}}", trimmed);
       const responseText = await generateWithGemini({
         model: MEAL_EXTRACTION_MODEL,
         promptText: prompt,
+        json: true,
       });
-      const parsed = cleanJson(responseText);
+      estimate = parseMealExtraction(cleanJson(responseText), trimmed);
 
-      if (parsed && typeof parsed.calories === "number") {
-        return {
-          foodName: parsed.foodName || description.trim(),
-          mealType: VALID_MEAL_TYPES.includes(parsed.mealType) ? parsed.mealType : "LUNCH",
-          quantity: Number(parsed.quantity) || 1,
-          quantityUnit: parsed.quantityUnit || "serving",
-          ...normalizeNutritionValues(parsed),
-          micronutrients: parsed.micronutrients || {},
-          confidence: parsed.confidence || 0.85,
-        };
+      if (!estimate) {
+        console.warn(
+          "Gemini meal extraction didn't match the expected schema, falling back. Raw response:",
+          responseText
+        );
       }
     } catch (err) {
       console.warn("Gemini text extraction encountered error, falling back to smart extractor:", err.message);
     }
   }
 
-  return fallbackNutritionEstimate(description);
+  estimate = estimate || fallbackMealEstimate(trimmed);
+
+  // Splitting an existing meal (e.g. an imported one) must not change its
+  // known nutrition: the AI decides the parts, the totals stay as they were.
+  if (targetTotals) {
+    return buildMealEstimate({
+      description: trimmed,
+      mealType: estimate.mealType,
+      items: scaleItemsToTotals(estimate.items, targetTotals),
+      confidence: estimate.confidence,
+    });
+  }
+
+  return estimate;
 }
 
 /**
@@ -687,7 +1115,8 @@ async function runFallbackChat({
     lower.includes("for my snack");
 
   if (isLoggingIntent) {
-    let mealDetails = fallbackNutritionEstimate(trimmed.replace(/^(i ate|i had|log|add|record|just ate)\s+/i, ""));
+    const description = trimmed.replace(/^(i ate|i had|log|add|record|just ate)\s+/i, "");
+    let mealDetails = fallbackMealEstimate(description);
 
     if (genAI) {
       try {
@@ -695,27 +1124,18 @@ async function runFallbackChat({
         const responseText = await generateWithGemini({
           model: MEAL_EXTRACTION_MODEL,
           promptText: parsePrompt,
+          json: true,
         });
-        const parsedData = cleanJson(responseText);
-        if (parsedData && parsedData.calories) {
-          mealDetails = {
-            ...mealDetails,
-            ...parsedData,
-            mealType: VALID_MEAL_TYPES.includes(parsedData.mealType) ? parsedData.mealType : mealDetails.mealType,
-          };
-        }
+        mealDetails = parseMealExtraction(cleanJson(responseText), description) || mealDetails;
       } catch (err) {
         console.warn("AI parser error, used fallback:", err.message);
       }
     }
 
     const createdMeal = await createMeal(userId, {
-      mealType: mealDetails.mealType || "LUNCH",
-      foodName: mealDetails.foodName || "Logged Meal",
-      quantity: Number(mealDetails.quantity) || 1,
-      quantityUnit: mealDetails.quantityUnit || "serving",
-      ...normalizeNutritionValues(mealDetails),
-      micronutrients: mealDetails.micronutrients || {},
+      mealType: mealDetails.mealType,
+      foodName: mealDetails.foodName,
+      items: mealDetails.items,
       consumedAt: new Date(),
       source: "AI",
     });
@@ -848,18 +1268,9 @@ async function chatWithAssistant({
     const analysis = await analyzeFoodImage({ imageBase64, mimeType: imageMimeType });
 
     const createdMeal = await createMeal(userId, {
-      mealType: analysis.mealType || "LUNCH",
-      foodName: analysis.foodName || "Photo Logged Meal",
-      quantity: Number(analysis.quantity) || 1,
-      quantityUnit: analysis.quantityUnit || "serving",
-      calories: analysis.calories,
-      protein: analysis.protein || 0,
-      carbs: analysis.carbs || 0,
-      fat: analysis.fat || 0,
-      fiber: analysis.fiber || 0,
-      sugar: analysis.sugar || 0,
-      sodium: analysis.sodium || 0,
-      micronutrients: analysis.micronutrients || {},
+      mealType: analysis.mealType,
+      foodName: analysis.foodName,
+      items: analysis.items,
       attachmentUrl: analysis.attachmentUrl,
       attachmentType: analysis.attachmentUrl ? "IMAGE" : undefined,
       consumedAt: new Date(),
@@ -963,5 +1374,6 @@ module.exports = {
   analyzeFoodImage,
   chatWithAssistant,
   importMealsFromPdf,
+  parseMealsFromPdf,
   extractNutritionFromText,
 };

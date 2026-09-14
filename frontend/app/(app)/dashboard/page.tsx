@@ -83,22 +83,6 @@ export default function DashboardPage() {
               prefillData={prefillData}
               onSaved={handleDataRefreshed}
             />
-            <Button
-              variant="outline"
-              onClick={() => setIsScanOpen(true)}
-              className="rounded-full"
-            >
-              <CameraIcon className="size-4" />
-              <span>Scan food</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setIsPdfImportOpen(true)}
-              className="rounded-full"
-            >
-              <FileTextIcon className="size-4" />
-              <span>Import PDF</span>
-            </Button>
           </div>
         }
       />

@@ -1,5 +1,10 @@
 const prisma = require("../config/prisma");
-const { calculateSuggestedTargets } = require("./nutrition-calculator.service");
+const { assessBody, assertGoalPlanAllowed } = require("./body-assessment.service");
+const {
+  requireUser,
+  hasCompletedProfile,
+  buildProfileView,
+} = require("./profile.service");
 
 const PROFILE_SELECT = {
   name: true,
@@ -10,48 +15,38 @@ const PROFILE_SELECT = {
   activityLevel: true,
 };
 
-function hasCompletedProfile(user) {
-  return (
-    user.age != null &&
-    Boolean(user.gender) &&
-    user.heightCm != null &&
-    user.currentWeight != null &&
-    Boolean(user.activityLevel)
-  );
-}
-
+// Steps: 1 basic info, 2 health, 3 goal, 4 targets.
 function getNextStep(user) {
+  // Users who finished onboarding before the health step existed stay done;
+  // they can add health conditions from the Goals page.
+  if (user.onboardingCompleted) return null;
   if (!hasCompletedProfile(user)) return 1;
-  if (!user.goalType) return 2;
-  if (!user.onboardingCompleted) return 3;
+  if (!user.healthReviewedAt) return 2;
+  if (!user.goalType) return 3;
+  if (!user.onboardingCompleted) return 4;
   return null;
 }
 
-async function requireUser(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-
-  if (!user) {
-    const error = new Error("User not found");
-    error.statusCode = 404;
+function requirePreviousSteps(user, step) {
+  if (getNextStep(user) !== null && getNextStep(user) < step) {
+    const error = new Error("Complete the previous onboarding steps first");
+    error.statusCode = 400;
     throw error;
   }
-
-  return user;
 }
 
 async function getOnboardingStatus(userId) {
   const user = await requireUser(userId);
+  const view = buildProfileView(user);
 
   return {
-    profile: {
-      name: user.name,
-      age: user.age,
-      gender: user.gender,
-      heightCm: user.heightCm,
-      currentWeight: user.currentWeight,
-      activityLevel: user.activityLevel,
-    },
-    goalType: user.goalType,
+    profile: view.profile,
+    healthConditions: view.healthConditions,
+    healthReviewed: Boolean(user.healthReviewedAt),
+    goalType: view.goalType,
+    targetWeight: view.targetWeight,
+    weeklyWeightChangeKg: view.weeklyWeightChangeKg,
+    assessment: view.assessment,
     onboardingCompleted: user.onboardingCompleted,
     nextStep: getNextStep(user),
   };
@@ -72,45 +67,75 @@ async function saveProfile(userId, data) {
   });
 }
 
-async function saveGoalType(userId, goalType) {
-  await prisma.user.update({
+/** Saves the health conditions (possibly none) and returns the new assessment. */
+async function saveHealthConditions(userId, healthConditions) {
+  const user = await requireUser(userId);
+  requirePreviousSteps(user, 2);
+
+  const updated = await prisma.user.update({
     where: { id: userId },
-    data: { goalType },
+    data: { healthConditions, healthReviewedAt: new Date() },
   });
 
-  return goalType;
+  return {
+    healthConditions: updated.healthConditions,
+    assessment: assessBody(updated),
+  };
+}
+
+/**
+ * Saves the goal type and, for LOSE/GAIN, the target weight and weekly pace,
+ * after checking them against the user's BMI and health-based limits.
+ */
+async function saveGoalType(userId, { goalType, targetWeight, weeklyWeightChangeKg }) {
+  const user = await requireUser(userId);
+  requirePreviousSteps(user, 3);
+
+  const plan =
+    goalType === "MAINTAIN"
+      ? { goalType, targetWeight: null, weeklyWeightChangeKg: null }
+      : { goalType, targetWeight, weeklyWeightChangeKg };
+
+  assertGoalPlanAllowed(assessBody(user), plan, user.currentWeight);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: plan,
+  });
+
+  return plan;
 }
 
 async function getSuggestedTargets(userId) {
   const user = await requireUser(userId);
+  requirePreviousSteps(user, 4);
 
-  if (!hasCompletedProfile(user) || !user.goalType) {
-    const error = new Error(
-      "Complete the previous onboarding steps before generating targets"
-    );
-    error.statusCode = 400;
-    throw error;
-  }
+  const view = buildProfileView(user);
 
-  return calculateSuggestedTargets(user);
+  return {
+    targets: view.suggestedTargets,
+    plan: view.plan,
+    maintenanceCalories: view.maintenanceCalories,
+    assessment: view.assessment,
+    profile: {
+      heightCm: user.heightCm,
+      currentWeight: user.currentWeight,
+      targetWeight: user.targetWeight,
+      goalType: user.goalType,
+      bmi: view.assessment?.bmi ?? null,
+    },
+  };
 }
 
 async function completeOnboarding(userId, targets) {
   const user = await requireUser(userId);
-
-  if (!hasCompletedProfile(user) || !user.goalType) {
-    const error = new Error(
-      "Complete the previous onboarding steps before finishing onboarding"
-    );
-    error.statusCode = 400;
-    throw error;
-  }
+  requirePreviousSteps(user, 4);
 
   const [goal] = await prisma.$transaction([
     prisma.goal.upsert({
       where: { userId },
-      create: { userId, ...targets },
-      update: targets,
+      create: { userId, ...targets, targetWeight: user.targetWeight },
+      update: { ...targets, targetWeight: user.targetWeight },
     }),
     prisma.user.update({
       where: { id: userId },
@@ -124,6 +149,7 @@ async function completeOnboarding(userId, targets) {
 module.exports = {
   getOnboardingStatus,
   saveProfile,
+  saveHealthConditions,
   saveGoalType,
   getSuggestedTargets,
   completeOnboarding,

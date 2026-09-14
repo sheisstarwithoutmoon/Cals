@@ -229,7 +229,7 @@ export function LoginForm() {
         </div>
 
         <p className="mt-5 text-center text-xs font-medium text-muted-foreground">
-          Don&apos;t have an account?{" "}
+          Don't have an account?{" "}
           <Link
             href="/register"
             className="font-bold text-primary underline underline-offset-2 hover:text-primary/80"

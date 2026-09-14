@@ -1,19 +1,34 @@
 "use client";
 
-import { useState, useRef, useEffect, type ChangeEvent } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import {
-  FileTextIcon,
-  UploadCloudIcon,
-  Loader2Icon,
-  CheckIcon,
-  XIcon,
   AlertCircleIcon,
+  FileTextIcon,
+  Loader2Icon,
+  PencilIcon,
+  PlusIcon,
+  UploadCloudIcon,
 } from "lucide-react";
+import { cn } from "cn";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { MealFormDialog } from "@/components/meals/meal-form-dialog";
+import { MealItemsTable } from "@/components/meals/meal-items-table";
+import { MEAL_TYPE_META } from "@/components/meals/meal-type-meta";
+import type { ExtractedNutrition } from "@/lib/api/ai";
 import { ApiError } from "@/lib/api/client";
-import { importMealsFromPdf } from "@/lib/api/meals";
-import type { MealEntry } from "@/lib/types/api";
+import { createMealsBulk, previewPdfImport } from "@/lib/api/meals";
+import { MEAL_TYPE_LABELS } from "@/lib/constants";
+import { formatDate, formatNumber, formatTime } from "@/lib/format";
+import type { MealInput, PdfMealDraft } from "@/lib/types/api";
 
 interface PdfImportModalProps {
   isOpen: boolean;
@@ -21,257 +36,502 @@ interface PdfImportModalProps {
   onImportComplete: () => void;
 }
 
+interface ReviewMeal {
+  key: string;
+  selected: boolean;
+  meal: MealInput;
+}
+
+function draftToMealInput(draft: PdfMealDraft): MealInput {
+  return {
+    mealType: draft.mealType,
+    foodName: draft.foodName,
+    // The date comes from the PDF and the time is a per-meal-type default;
+    // built here so it lands on that calendar day in the user's timezone.
+    consumedAt: new Date(`${draft.date}T${draft.time}:00`).toISOString(),
+    calories: draft.calories,
+    protein: draft.protein,
+    carbs: draft.carbs,
+    fat: draft.fat,
+    fiber: draft.fiber,
+    sugar: draft.sugar,
+    sodium: draft.sodium,
+    items: draft.items,
+    attachmentUrl: draft.attachmentUrl,
+    attachmentType: draft.attachmentType,
+    source: "PDF_IMPORT",
+  };
+}
+
+function mealInputToPrefill(meal: MealInput): ExtractedNutrition {
+  return {
+    foodName: meal.foodName,
+    mealType: meal.mealType,
+    quantity: meal.quantity,
+    quantityUnit: meal.quantityUnit,
+    calories: meal.calories,
+    protein: meal.protein,
+    carbs: meal.carbs,
+    fat: meal.fat,
+    fiber: meal.fiber,
+    sugar: meal.sugar,
+    sodium: meal.sodium,
+    micronutrients: meal.micronutrients,
+    items: meal.items,
+    attachmentUrl: meal.attachmentUrl ?? undefined,
+    attachmentType: meal.attachmentType ?? undefined,
+  };
+}
+
+function localDateKey(iso: string) {
+  const date = new Date(iso);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
 export function PdfImportModal({
   isOpen,
   onClose,
   onImportComplete,
 }: PdfImportModalProps) {
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [result, setResult] = useState<{
-    count: number;
-    sampleEntries: Partial<MealEntry>[];
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reviewMeals, setReviewMeals] = useState<ReviewMeal[] | null>(null);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
 
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  const isReviewing = reviewMeals !== null;
+
+  function reset() {
+    setFileName(null);
+    setPdfBase64(null);
+    setIsDragging(false);
+    setIsParsing(false);
+    setIsSaving(false);
+    setError(null);
+    setReviewMeals(null);
+    setSkippedCount(0);
+    setEditingKey(null);
+  }
+
+  function handleClose() {
+    if (isParsing || isSaving) return;
+    reset();
+    onClose();
+  }
+
+  function handleFile(file: File | undefined) {
     if (!file) return;
 
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Please select a valid PDF file.");
+      setError("Choose a PDF file.");
       return;
     }
 
     setError(null);
-    setResult(null);
-    setSelectedFileName(file.name);
+    setFileName(file.name);
 
     const reader = new FileReader();
-    reader.onload = () => {
-      setPdfBase64(reader.result as string);
-    };
+    reader.onload = () => setPdfBase64(reader.result as string);
+    reader.onerror = () => setError("Couldn't read that file. Please try again.");
     reader.readAsDataURL(file);
   }
 
-  async function handleImport() {
+  async function handleParse() {
     if (!pdfBase64) return;
-    setIsImporting(true);
+    setIsParsing(true);
     setError(null);
 
     try {
-      const res = await importMealsFromPdf({ pdfBase64 });
-      if (res.success) {
-        setResult({
-          count: res.count,
-          sampleEntries: res.sampleEntries || [],
-        });
-        onImportComplete();
-      }
+      const result = await previewPdfImport({ pdfBase64 });
+      const meals = [...result.meals]
+        .map(draftToMealInput)
+        .sort((a, b) => a.consumedAt.localeCompare(b.consumedAt));
+
+      setReviewMeals(
+        meals.map((meal, index) => ({ key: `draft-${index}`, selected: true, meal }))
+      );
+      setSkippedCount(result.skippedCount);
     } catch (err) {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Failed to parse PDF. Please ensure the PDF contains tabular meal entries."
+          : "Couldn't read meals from this PDF. Make sure it contains a table of meal entries."
       );
     } finally {
-      setIsImporting(false);
+      setIsParsing(false);
     }
   }
 
-  function handleClose() {
-    setSelectedFileName(null);
-    setPdfBase64(null);
-    setResult(null);
+  async function handleAddMeals() {
+    const selected = reviewMeals?.filter((entry) => entry.selected) ?? [];
+    if (!selected.length) return;
+
+    setIsSaving(true);
     setError(null);
-    setIsImporting(false);
-    onClose();
+
+    try {
+      const result = await createMealsBulk(selected.map((entry) => entry.meal));
+      toast.success(
+        `Added ${result.count} ${result.count === 1 ? "meal" : "meals"} with ${result.itemCount} ${
+          result.itemCount === 1 ? "item" : "items"
+        }`
+      );
+      onImportComplete();
+      reset();
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Couldn't add the selected meals. Please try again."
+      );
+      setIsSaving(false);
+    }
   }
 
-  const [mounted, setMounted] = useState(false);
+  function setSelected(key: string, selected: boolean) {
+    setReviewMeals((prev) =>
+      prev?.map((entry) => (entry.key === key ? { ...entry, selected } : entry)) ?? prev
+    );
+  }
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  function setAllSelected(selected: boolean) {
+    setReviewMeals((prev) => prev?.map((entry) => ({ ...entry, selected })) ?? prev);
+  }
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const editingEntry = reviewMeals?.find((entry) => entry.key === editingKey) ?? null;
+  // Memoized so the editor doesn't reset its form on every parent render.
+  const editingPrefill = useMemo(
+    () => (editingEntry ? mealInputToPrefill(editingEntry.meal) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingKey]
+  );
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        handleClose();
-      }
+  const groups = useMemo(() => {
+    const map = new Map<string, ReviewMeal[]>();
+    // Sorted here (not only after parsing) so an edited date moves the meal.
+    const sorted = [...(reviewMeals ?? [])].sort((a, b) =>
+      a.meal.consumedAt.localeCompare(b.meal.consumedAt)
+    );
+    for (const entry of sorted) {
+      const key = localDateKey(entry.meal.consumedAt);
+      map.set(key, [...(map.get(key) ?? []), entry]);
     }
+    return Array.from(map.entries());
+  }, [reviewMeals]);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  const selectedMeals = reviewMeals?.filter((entry) => entry.selected) ?? [];
+  const selectedCalories = selectedMeals.reduce((sum, entry) => sum + entry.meal.calories, 0);
+  const totalItems = reviewMeals?.reduce((sum, entry) => sum + (entry.meal.items?.length ?? 0), 0) ?? 0;
+  const allSelected = Boolean(reviewMeals?.length) && selectedMeals.length === reviewMeals?.length;
 
-  if (!isOpen || !mounted) return null;
-
-  return createPortal(
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: "100vw",
-        height: "100vh",
-        backgroundColor: "rgba(0, 0, 0, 0.4)",
-        zIndex: 9999,
-      }}
-      className="flex items-center justify-center p-4 animate-in fade-in duration-200"
-      onClick={handleClose}
-    >
-      <div
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-2xl sm:p-7 animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent
+        className={cn(
+          "max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 rounded-2xl bg-card p-0",
+          isReviewing ? "sm:max-w-[min(64rem,calc(100%-3rem))]" : "sm:max-w-lg"
+        )}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-          <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
-              <FileTextIcon className="size-5" />
-            </div>
-            <div>
-              <h2 className="font-heading text-lg font-bold text-stone-900">
-                Bulk PDF Nutrition Import
-              </h2>
-              <p className="text-xs text-stone-500">
-                Upload tabular food history or diary PDF to bulk import
-              </p>
-            </div>
+        <DialogHeader className="flex-row items-center gap-3 border-b border-border/70 px-5 py-4 pr-12 sm:px-6">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#E7F0EA] text-primary">
+            <FileTextIcon className="size-5" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <DialogTitle className="text-lg font-semibold">
+              {isReviewing ? "Review imported meals" : "Import PDF"}
+            </DialogTitle>
+            <DialogDescription>
+              {isReviewing
+                ? "Choose the meals to add. Edit any meal before adding it."
+                : "Upload a food diary or nutrition history PDF. You can review every meal before anything is added."}
+            </DialogDescription>
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-          >
-            <XIcon className="size-5" />
-          </button>
-        </div>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="mt-5 space-y-4">
+        <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/40 px-4 py-4 sm:px-6 sm:py-5">
           <input
             ref={fileInputRef}
             type="file"
             accept=".pdf,application/pdf"
-            onChange={handleFileChange}
             className="hidden"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              handleFile(event.target.files?.[0]);
+              event.target.value = "";
+            }}
           />
 
-          {!result ? (
+          {!isReviewing && (
             <>
-              {!selectedFileName ? (
-                <div
+              {!fileName ? (
+                <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-emerald-300/80 bg-[#eef7f2]/60 p-8 text-center transition-colors hover:border-emerald-500 hover:bg-[#e6f4eb]"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(event: DragEvent<HTMLButtonElement>) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                    handleFile(event.dataTransfer.files?.[0]);
+                  }}
+                  className={cn(
+                    "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-10 text-center transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                    isDragging
+                      ? "border-primary bg-[#E7F0EA]"
+                      : "border-border bg-card hover:border-primary/40 hover:bg-[#E7F0EA]/60"
+                  )}
                 >
-                  <div className="flex size-12 items-center justify-center rounded-full bg-white text-emerald-700 shadow-2xs">
-                    <UploadCloudIcon className="size-6" />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-stone-800">
-                    Click or drag to upload nutrition PDF
-                  </p>
-                  <p className="mt-1 text-xs text-stone-500">
-                    Accepts exported tabular food logs or meal histories
-                  </p>
-                </div>
+                  <span className="flex size-11 items-center justify-center rounded-full bg-[#E7F0EA] text-primary">
+                    <UploadCloudIcon className="size-5" />
+                  </span>
+                  <span className="text-sm font-medium text-foreground">Choose a PDF</span>
+                  <span className="text-xs text-muted-foreground">
+                    Click or drag a file here. Tables of meals by date work best.
+                  </span>
+                </button>
               ) : (
-                <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <FileTextIcon className="size-5 text-emerald-700" />
-                      <div>
-                        <p className="truncate text-xs font-bold text-stone-900">
-                          {selectedFileName}
-                        </p>
-                        <p className="text-[11px] text-stone-500">PDF Document ready</p>
-                      </div>
+                <div className="space-y-4 rounded-2xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#E7F0EA] text-primary">
+                      <FileTextIcon className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium break-words text-foreground">{fileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isParsing
+                          ? "Reading meals from your PDF. This can take up to a minute."
+                          : "Ready to read"}
+                      </p>
                     </div>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isParsing}
                       onClick={() => fileInputRef.current?.click()}
-                      className="text-xs font-semibold text-emerald-800 hover:underline"
+                      className="text-primary"
                     >
                       Change
-                    </button>
+                    </Button>
                   </div>
 
                   <Button
                     type="button"
-                    onClick={handleImport}
-                    disabled={isImporting}
-                    className="mt-4 w-full rounded-full bg-emerald-700 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
+                    onClick={handleParse}
+                    disabled={isParsing || !pdfBase64}
+                    className="w-full rounded-full"
                   >
-                    {isImporting ? (
-                      <>
-                        <Loader2Icon className="size-4 animate-spin" />
-                        <span>Parsing and importing table rows...</span>
-                      </>
+                    {isParsing ? (
+                      <Loader2Icon className="animate-spin" />
                     ) : (
-                      <>
-                        <UploadCloudIcon className="size-4" />
-                        <span>Parse & Bulk Import Meals</span>
-                      </>
+                      <UploadCloudIcon />
                     )}
+                    {isParsing ? "Reading PDF" : "Read meals from PDF"}
                   </Button>
                 </div>
               )}
             </>
-          ) : (
-            <div className="space-y-4 rounded-2xl border border-emerald-200 bg-[#f0faf4] p-5 text-center">
-              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-                <CheckIcon className="size-6 stroke-[3]" />
-              </div>
-              <h3 className="font-heading text-lg font-bold text-stone-900">
-                Successfully Imported {result.count} Meals
-              </h3>
-              <p className="text-xs text-stone-600">
-                All food items and nutritional values have been added to your database diary.
-              </p>
+          )}
 
-              {result.sampleEntries.length > 0 && (
-                <div className="mt-3 text-left">
-                  <p className="text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">
-                    Sample Extracted Entries:
+          {isReviewing && reviewMeals && (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    {reviewMeals.length} {reviewMeals.length === 1 ? "meal" : "meals"} found ·{" "}
+                    {totalItems} {totalItems === 1 ? "item" : "items"}
                   </p>
-                  <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl bg-white p-3 border border-emerald-100 text-xs text-stone-700">
-                    {result.sampleEntries.map((entry, idx) => (
-                      <div key={idx} className="flex justify-between border-b border-stone-100 py-1 last:border-0">
-                        <span className="font-medium truncate max-w-[200px]">{entry.foodName}</span>
-                        <span className="font-bold text-emerald-800">{entry.calories} kcal</span>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Rows with the same date and meal type are grouped into one meal.
+                    {skippedCount > 0 &&
+                      ` ${skippedCount} ${skippedCount === 1 ? "row was" : "rows were"} skipped because the date or calories couldn't be read.`}
+                  </p>
                 </div>
-              )}
+                <label className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={allSelected}
+                    onChange={(event) => setAllSelected(event.target.checked)}
+                  />
+                  Select all
+                </label>
+              </div>
 
-              <Button
-                type="button"
-                onClick={handleClose}
-                className="w-full rounded-full bg-stone-900 py-2.5 text-xs font-semibold text-white hover:bg-stone-800"
-              >
-                Done
-              </Button>
-            </div>
+              {groups.map(([dateKey, entries]) => (
+                <section key={dateKey} className="space-y-3">
+                  <h3 className="px-1 text-sm font-semibold text-foreground">
+                    {formatDate(new Date(`${dateKey}T00:00:00`), { weekday: "short" })}
+                  </h3>
+
+                  {entries.map((entry) => {
+                    const { meal } = entry;
+                    const meta = MEAL_TYPE_META[meal.mealType];
+                    const Icon = meta.icon;
+                    const checkboxId = `import-${entry.key}`;
+
+                    return (
+                      <div
+                        key={entry.key}
+                        className={cn(
+                          "overflow-hidden rounded-2xl border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-colors",
+                          entry.selected ? "border-primary/40" : "border-border"
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3.5 sm:p-4">
+                          <input
+                            id={checkboxId}
+                            type="checkbox"
+                            className="size-4 shrink-0 accent-primary"
+                            checked={entry.selected}
+                            onChange={(event) => setSelected(entry.key, event.target.checked)}
+                          />
+                          <label
+                            htmlFor={checkboxId}
+                            className={cn(
+                              "flex min-w-0 flex-1 cursor-pointer items-center gap-3",
+                              !entry.selected && "opacity-60"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "flex size-10 shrink-0 items-center justify-center rounded-full",
+                                meta.iconClassName
+                              )}
+                            >
+                              <Icon className="size-5" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-foreground">
+                                {MEAL_TYPE_LABELS[meal.mealType]}
+                                <span className="font-normal text-muted-foreground">
+                                  {" "}
+                                  · {formatTime(meal.consumedAt)}
+                                </span>
+                              </span>
+                              <span className="block text-sm break-words text-foreground">
+                                {meal.foodName}
+                              </span>
+                            </span>
+                          </label>
+                          <div
+                            className={cn(
+                              "ml-auto flex shrink-0 items-center gap-3",
+                              !entry.selected && "opacity-60"
+                            )}
+                          >
+                            <div className="text-right">
+                              <p className="text-sm whitespace-nowrap text-muted-foreground">
+                                <span className="text-base font-semibold text-foreground tabular-nums">
+                                  {formatNumber(meal.calories)}
+                                </span>{" "}
+                                kcal
+                              </p>
+                              <p className="text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
+                                P{formatNumber(meal.protein ?? 0)} · C{formatNumber(meal.carbs ?? 0)} · F
+                                {formatNumber(meal.fat ?? 0)}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full"
+                              onClick={() => setEditingKey(entry.key)}
+                            >
+                              <PencilIcon />
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+
+                        <MealItemsTable
+                          items={meal.items ?? []}
+                          className={cn("border-t border-border/70", !entry.selected && "opacity-60")}
+                        />
+                      </div>
+                    );
+                  })}
+                </section>
+              ))}
+            </>
           )}
 
           {error && (
-            <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-              <AlertCircleIcon className="size-4 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">
+              <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+
+        {isReviewing && (
+          <div className="flex flex-col-reverse gap-3 border-t border-border/70 bg-card px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <p className="text-sm text-muted-foreground tabular-nums">
+              <span className="font-semibold text-foreground">
+                {selectedMeals.length} of {reviewMeals?.length}
+              </span>{" "}
+              meals selected · {formatNumber(selectedCalories)} kcal
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                disabled={isSaving}
+                onClick={() => {
+                  reset();
+                  fileInputRef.current?.click();
+                }}
+              >
+                Upload another PDF
+              </Button>
+              <Button
+                type="button"
+                className="rounded-full"
+                disabled={isSaving || selectedMeals.length === 0}
+                onClick={handleAddMeals}
+              >
+                {isSaving ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                {isSaving
+                  ? "Adding meals"
+                  : `Add ${selectedMeals.length} ${selectedMeals.length === 1 ? "meal" : "meals"}`}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <MealFormDialog
+          open={Boolean(editingEntry)}
+          onOpenChange={(open) => {
+            if (!open) setEditingKey(null);
+          }}
+          prefillData={editingPrefill}
+          defaultConsumedAt={editingEntry ? new Date(editingEntry.meal.consumedAt) : undefined}
+          title="Edit imported meal"
+          description="Changes apply to this import only until you add the meal."
+          submitLabel="Save changes"
+          onSubmitDraft={(payload) => {
+            if (!editingKey) return;
+            setReviewMeals(
+              (prev) =>
+                prev?.map((entry) =>
+                  entry.key === editingKey
+                    ? { ...entry, selected: true, meal: { ...payload, source: "PDF_IMPORT" } }
+                    : entry
+                ) ?? prev
+            );
+          }}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
