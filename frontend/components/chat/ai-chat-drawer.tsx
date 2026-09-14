@@ -91,6 +91,45 @@ function fileToPending(file: File): Promise<PendingFile> {
   });
 }
 
+function ChatSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse p-1">
+      {/* Assistant bubble skeleton */}
+      <div className="flex items-start gap-2.5">
+        <div className="size-7 shrink-0 rounded-full bg-emerald-200/60" />
+        <div className="flex-1 max-w-[75%] space-y-2">
+          <div className="h-10 w-full rounded-2xl rounded-tl-xs bg-stone-200/70" />
+        </div>
+      </div>
+
+      {/* User bubble skeleton */}
+      <div className="flex flex-row-reverse items-start gap-2.5">
+        <div className="size-7 shrink-0 rounded-full bg-stone-300/60" />
+        <div className="flex flex-1 justify-end max-w-[65%]">
+          <div className="h-9 w-full rounded-2xl rounded-tr-xs bg-stone-300/50" />
+        </div>
+      </div>
+
+      {/* Assistant bubble + card skeleton */}
+      <div className="flex items-start gap-2.5">
+        <div className="size-7 shrink-0 rounded-full bg-emerald-200/60" />
+        <div className="flex-1 max-w-[80%] space-y-2">
+          <div className="h-12 w-full rounded-2xl rounded-tl-xs bg-stone-200/70" />
+          <div className="h-14 w-full rounded-xl bg-emerald-100/50" />
+        </div>
+      </div>
+
+      {/* User bubble skeleton */}
+      <div className="flex flex-row-reverse items-start gap-2.5">
+        <div className="size-7 shrink-0 rounded-full bg-stone-300/60" />
+        <div className="flex flex-1 justify-end max-w-[55%]">
+          <div className="h-8 w-full rounded-2xl rounded-tr-xs bg-stone-300/50" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AiChatDrawer({
   isOpen,
   onClose,
@@ -98,13 +137,8 @@ export function AiChatDrawer({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const [messages, setMessages] = useState<MessageItem[]>([
-    {
-      id: "welcome",
-      sender: "assistant",
-      text: "Hi! Tell me what you ate, ask about your goals, or attach a food photo / PDF diary and I'll log it for you by text or voice.",
-    },
-  ]);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -112,16 +146,21 @@ export function AiChatDrawer({
   const [isRecording, setIsRecording] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const shouldScrollToBottomRef = useRef(true);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && shouldScrollToBottomRef.current && !isHistoryLoading) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, isOpen]);
+  }, [messages, isOpen, isHistoryLoading]);
 
   // Grows the composer with its content instead of scrolling internally,
   // capped at MAX_TEXTAREA_HEIGHT so a long paste doesn't push the send
@@ -147,24 +186,49 @@ export function AiChatDrawer({
 
     (async () => {
       try {
-        const response = await getChatHistory();
-        if (cancelled || response.data.length === 0) return;
+        setIsHistoryLoading(true);
+        shouldScrollToBottomRef.current = true;
+        const response = await getChatHistory({ page: 1, limit: 20 });
+        if (cancelled) return;
 
-        setMessages(
-          response.data.map((entry) => ({
-            id: entry.id,
-            sender: entry.sender,
-            text: entry.text,
-            action: entry.action,
-            meal: entry.meal,
-            goal: entry.goal,
-            summary: entry.summary,
-            importedCount: entry.importedCount,
-            skippedCount: entry.skippedCount,
-          }))
-        );
+        if (response.data && response.data.length > 0) {
+          setMessages(
+            response.data.map((entry) => ({
+              id: entry.id,
+              sender: entry.sender,
+              text: entry.text,
+              action: entry.action,
+              meal: entry.meal,
+              goal: entry.goal,
+              summary: entry.summary,
+              importedCount: entry.importedCount,
+              skippedCount: entry.skippedCount,
+            }))
+          );
+          setPage(1);
+          setHasNextPage(Boolean(response.pagination?.hasNextPage));
+        } else {
+          setMessages([
+            {
+              id: "welcome",
+              sender: "assistant",
+              text: "Hi! Tell me what you ate, ask about your goals, or attach a food photo / PDF diary and I'll log it for you by text or voice.",
+            },
+          ]);
+          setHasNextPage(false);
+        }
       } catch {
-        // Keep the default welcome message if history can't be loaded.
+        setMessages([
+          {
+            id: "welcome",
+            sender: "assistant",
+            text: "Hi! Tell me what you ate, ask about your goals, or attach a food photo / PDF diary and I'll log it for you by text or voice.",
+          },
+        ]);
+      } finally {
+        if (!cancelled) {
+          setIsHistoryLoading(false);
+        }
       }
     })();
 
@@ -261,7 +325,42 @@ export function AiChatDrawer({
     setPendingFile(pending);
   }
 
+  async function handleLoadOlder() {
+    if (isLoadingOlder || !hasNextPage) return;
+
+    setIsLoadingOlder(true);
+    shouldScrollToBottomRef.current = false;
+
+    try {
+      const nextPage = page + 1;
+      const response = await getChatHistory({ page: nextPage, limit: 20 });
+
+      if (response.data && response.data.length > 0) {
+        const olderMessages: MessageItem[] = response.data.map((entry) => ({
+          id: entry.id,
+          sender: entry.sender,
+          text: entry.text,
+          action: entry.action,
+          meal: entry.meal,
+          goal: entry.goal,
+          summary: entry.summary,
+          importedCount: entry.importedCount,
+          skippedCount: entry.skippedCount,
+        }));
+
+        setMessages((current) => [...olderMessages, ...current]);
+        setPage(nextPage);
+        setHasNextPage(Boolean(response.pagination?.hasNextPage));
+      }
+    } catch (err) {
+      console.warn("Failed to load older messages", err);
+    } finally {
+      setIsLoadingOlder(false);
+    }
+  }
+
   async function handleSend(textToSend?: string) {
+    shouldScrollToBottomRef.current = true;
     const text = (textToSend ?? inputValue).trim();
     const file = pendingFile;
 
@@ -377,149 +476,172 @@ export function AiChatDrawer({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto bg-[#f7fbf8] p-4 sm:p-5">
-          {messages.map((message) => {
-            const isUser = message.sender === "user";
-
-            return (
-              <div
-                key={message.id}
-                className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}
-              >
-                <div
-                  className={`flex size-7 shrink-0 items-center justify-center rounded-full ${isUser
-                    ? "bg-stone-900 text-white"
-                    : "bg-emerald-100 text-emerald-800"
-                    }`}
-                >
-                  {isUser ? (
-                    <UserIcon className="size-3.5" />
-                  ) : (
-                    <SparklesIcon className="size-3.5" />
-                  )}
+          {isHistoryLoading ? (
+            <ChatSkeleton />
+          ) : (
+            <>
+              {hasNextPage && (
+                <div className="flex justify-center pb-1">
+                  <button
+                    type="button"
+                    onClick={handleLoadOlder}
+                    disabled={isLoadingOlder}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-600 shadow-xs hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
+                  >
+                    {isLoadingOlder ? (
+                      <Loader2Icon className="size-3.5 animate-spin text-emerald-700" />
+                    ) : (
+                      <span>Load older messages</span>
+                    )}
+                  </button>
                 </div>
+              )}
 
-                <div className="max-w-[85%] min-w-0 space-y-2">
-                  {message.attachment && (
+              {messages.map((message) => {
+                const isUser = message.sender === "user";
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}
+                  >
                     <div
-                      className={`overflow-hidden rounded-2xl border ${isUser ? "border-stone-700" : "border-emerald-100"
+                      className={`flex size-7 shrink-0 items-center justify-center rounded-full ${isUser
+                        ? "bg-stone-900 text-white"
+                        : "bg-emerald-100 text-emerald-800"
                         }`}
                     >
-                      {message.attachment.kind === "IMAGE" ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={message.attachment.dataUrl}
-                          alt="Uploaded"
-                          className="max-h-40 w-full object-cover"
-                        />
+                      {isUser ? (
+                        <UserIcon className="size-3.5" />
                       ) : (
-                        <div className="flex items-center gap-2 bg-stone-100 px-3 py-2 text-xs font-medium text-stone-700">
-                          <FileTextIcon className="size-4 shrink-0" />
-                          <span className="truncate">{message.attachment.name}</span>
+                        <SparklesIcon className="size-3.5" />
+                      )}
+                    </div>
+
+                    <div className="max-w-[85%] min-w-0 space-y-2">
+                      {message.attachment && (
+                        <div
+                          className={`overflow-hidden rounded-2xl border ${isUser ? "border-stone-700" : "border-emerald-100"
+                            }`}
+                        >
+                          {message.attachment.kind === "IMAGE" ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={message.attachment.dataUrl}
+                              alt="Uploaded"
+                              className="max-h-40 w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 bg-stone-100 px-3 py-2 text-xs font-medium text-stone-700">
+                              <FileTextIcon className="size-4 shrink-0" />
+                              <span className="truncate">{message.attachment.name}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div
+                        className={`rounded-2xl px-4 py-3 text-xs leading-relaxed break-words sm:text-sm ${isUser
+                          ? "rounded-tr-xs bg-stone-900 text-white"
+                          : "rounded-tl-xs border border-emerald-100/60 bg-white text-stone-800 shadow-xs"
+                          }`}
+                      >
+                        {message.text}
+                      </div>
+
+                      {message.meal && (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs">
+                          <div className="flex items-center gap-1 font-bold text-emerald-900">
+                            <CheckCircle2Icon className="size-3.5 text-emerald-700" />
+                            <span>{message.meal.mealType}</span>
+                          </div>
+
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-emerald-800">
+                            <span className="truncate">{message.meal.foodName}</span>
+                            <span className="shrink-0 font-bold">
+                              {message.meal.calories} kcal
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {message.action === "PDF_IMPORTED" && (
+                        <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center">
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="text-[10px] font-bold uppercase text-stone-500">
+                              Imported
+                            </p>
+                            <p className="font-bold text-emerald-800">
+                              {message.importedCount ?? 0}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="text-[10px] font-bold uppercase text-stone-500">
+                              Skipped
+                            </p>
+                            <p className="font-bold text-stone-900">
+                              {message.skippedCount ?? 0}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {message.goal && (
+                        <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center text-[11px]">
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="font-bold uppercase text-stone-500">Cal</p>
+                            <p className="font-bold text-stone-900">
+                              {message.goal.dailyCalories ?? "-"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="font-bold uppercase text-stone-500">Protein</p>
+                            <p className="font-bold text-stone-900">
+                              {message.goal.dailyProtein ?? "-"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="font-bold uppercase text-stone-500">Carbs</p>
+                            <p className="font-bold text-stone-900">
+                              {message.goal.dailyCarbs ?? "-"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="font-bold uppercase text-stone-500">Fat</p>
+                            <p className="font-bold text-stone-900">
+                              {message.goal.dailyFat ?? "-"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {message.summary && (
+                        <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center">
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="text-[10px] font-bold uppercase text-stone-500">
+                              Meals
+                            </p>
+                            <p className="font-bold text-stone-900">
+                              {message.summary.totalMealsLogged}
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg bg-stone-50 p-1.5">
+                            <p className="text-[10px] font-bold uppercase text-stone-500">
+                              Avg. calories
+                            </p>
+                            <p className="font-bold text-emerald-800">
+                              {message.summary.avgDailyCalories} kcal/day
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
-                  )}
-
-                  <div
-                    className={`rounded-2xl px-4 py-3 text-xs leading-relaxed break-words sm:text-sm ${isUser
-                      ? "rounded-tr-xs bg-stone-900 text-white"
-                      : "rounded-tl-xs border border-emerald-100/60 bg-white text-stone-800 shadow-xs"
-                      }`}
-                  >
-                    {message.text}
                   </div>
-
-                  {message.meal && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs">
-                      <div className="flex items-center gap-1 font-bold text-emerald-900">
-                        <CheckCircle2Icon className="size-3.5 text-emerald-700" />
-                        <span>{message.meal.mealType}</span>
-                      </div>
-
-                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-emerald-800">
-                        <span className="truncate">{message.meal.foodName}</span>
-                        <span className="shrink-0 font-bold">
-                          {message.meal.calories} kcal
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {message.action === "PDF_IMPORTED" && (
-                    <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center">
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="text-[10px] font-bold uppercase text-stone-500">
-                          Imported
-                        </p>
-                        <p className="font-bold text-emerald-800">
-                          {message.importedCount ?? 0}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="text-[10px] font-bold uppercase text-stone-500">
-                          Skipped
-                        </p>
-                        <p className="font-bold text-stone-900">
-                          {message.skippedCount ?? 0}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {message.goal && (
-                    <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center text-[11px]">
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="font-bold uppercase text-stone-500">Cal</p>
-                        <p className="font-bold text-stone-900">
-                          {message.goal.dailyCalories ?? "-"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="font-bold uppercase text-stone-500">Protein</p>
-                        <p className="font-bold text-stone-900">
-                          {message.goal.dailyProtein ?? "-"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="font-bold uppercase text-stone-500">Carbs</p>
-                        <p className="font-bold text-stone-900">
-                          {message.goal.dailyCarbs ?? "-"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="font-bold uppercase text-stone-500">Fat</p>
-                        <p className="font-bold text-stone-900">
-                          {message.goal.dailyFat ?? "-"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {message.summary && (
-                    <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-emerald-200 bg-white p-2.5 text-center">
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="text-[10px] font-bold uppercase text-stone-500">
-                          Meals
-                        </p>
-                        <p className="font-bold text-stone-900">
-                          {message.summary.totalMealsLogged}
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg bg-stone-50 p-1.5">
-                        <p className="text-[10px] font-bold uppercase text-stone-500">
-                          Avg. calories
-                        </p>
-                        <p className="font-bold text-emerald-800">
-                          {message.summary.avgDailyCalories} kcal/day
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </>
+          )}
 
           {isLoading && (
             <div className="flex items-center gap-2 pl-10 text-xs text-stone-500">
