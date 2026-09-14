@@ -249,6 +249,36 @@ function toLocalDateKey(date, tzOffsetMinutes) {
     .slice(0, 10);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * UTC instants bounding the user's local calendar day `YYYY-MM-DD`, from a
+ * client tz offset (e.g. IST is -330, so its day starts at 18:30 UTC the day
+ * before). `end` is inclusive, matching `buildMealWhere`'s `lte`.
+ */
+function localDayRange(dateKey, tzOffsetMinutes) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day) + tzOffsetMinutes * 60 * 1000);
+
+  return { start, end: new Date(start.getTime() + DAY_MS - 1) };
+}
+
+/**
+ * Every meal on one of the user's local calendar days, oldest first,
+ * optionally narrowed to one meal type. Not paginated: a single day's
+ * entries are small, and a partial day would misreport what was eaten.
+ */
+async function getMealsForDay(userId, { date, mealType, tzOffset = 0 }) {
+  const { start, end } = localDayRange(date, tzOffset);
+  return prisma.mealEntry.findMany({
+    where: buildMealWhere(userId, { mealType, startDate: start, endDate: end }),
+    orderBy: {
+      consumedAt: "asc",
+    },
+    include: MEAL_INCLUDE,
+  });
+}
+
 /**
  * Groups entries into the user's local calendar days and sums nutrition per
  * day and for the whole set. Averages are per *logged* day, so days with
@@ -523,7 +553,10 @@ module.exports = {
   createMealsBulk,
   getMealById,
   getMeals,
+  getMealsForDay,
   getMealSummary,
+  toLocalDateKey,
+  localDayRange,
   getMealReport,
   updateMeal,
   deleteMeal,

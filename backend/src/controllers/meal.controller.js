@@ -165,7 +165,7 @@ async function remove(req, res, next) {
   }
 }
 
-const { parseMealsFromPdf } = require("../services/ai.service");
+const { parseMealsFromPdf } = require("../services/ai/attachment.service");
 
 /** Parses a diary PDF into meal drafts for review; nothing is saved. */
 async function previewPdfImport(req, res, next) {
