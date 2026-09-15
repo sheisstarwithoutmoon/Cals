@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, HeartPulseIcon, RulerIcon, TargetIcon } from "lucide-react";
+import { HeartPulseIcon, RulerIcon, TargetIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
@@ -22,15 +22,14 @@ import {
   type GoalPlanValue,
 } from "@/components/goals/goal-plan-fields";
 import { HealthConditionsPicker, HealthNotes } from "@/components/goals/health-conditions";
+import { AllergiesPicker, DietPreferencePicker } from "@/components/goals/diet-allergies-picker";
 import { DetailRows, SectionCard } from "@/components/goals/section-card";
 import { ApiError } from "@/lib/api/client";
 import {
   ACTIVITY_LEVEL_LABELS,
   ACTIVITY_LEVELS,
-  ALLERGY_INTOLERANCES,
   ALLERGY_LABELS,
   DIET_PREFERENCE_LABELS,
-  DIET_PREFERENCES,
   GOAL_TYPE_LABELS,
   HEALTH_CONDITION_LABELS,
 } from "@/lib/constants";
@@ -347,12 +346,6 @@ export function HealthCard({ view, onUpdate }: CardProps) {
 
   const reviewed = Boolean(view.healthReviewedAt);
 
-  function toggleAllergy(allergy: AllergyIntolerance) {
-    setAllergies((prev) =>
-      prev.includes(allergy) ? prev.filter((a) => a !== allergy) : [...prev, allergy]
-    );
-  }
-
   function open() {
     setConditions(view.healthConditions);
     setDietPreference(view.dietPreference);
@@ -423,26 +416,7 @@ export function HealthCard({ view, onUpdate }: CardProps) {
           {/* Diet Preference */}
           <div className="space-y-2">
             <Label className="text-xs font-bold text-foreground">Dietary Preference</Label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {DIET_PREFERENCES.map((diet) => {
-                const isSelected = dietPreference === diet;
-                return (
-                  <button
-                    key={diet}
-                    type="button"
-                    onClick={() => setDietPreference(isSelected ? null : (diet as DietPreference))}
-                    className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all ${
-                      isSelected
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm"
-                        : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
-                    }`}
-                  >
-                    <span>{DIET_PREFERENCE_LABELS[diet]}</span>
-                    {isSelected && <CheckIcon className="size-3.5 text-emerald-700" />}
-                  </button>
-                );
-              })}
-            </div>
+            <DietPreferencePicker value={dietPreference} onChange={setDietPreference} />
           </div>
 
           {/* Allergies */}
@@ -450,26 +424,7 @@ export function HealthCard({ view, onUpdate }: CardProps) {
             <Label className="text-xs font-bold text-foreground">
               Allergies & Intolerances <span className="font-normal text-muted-foreground">(Optional)</span>
             </Label>
-            <div className="flex flex-wrap gap-2">
-              {ALLERGY_INTOLERANCES.map((allergy) => {
-                const isSelected = allergies.includes(allergy as AllergyIntolerance);
-                return (
-                  <button
-                    key={allergy}
-                    type="button"
-                    onClick={() => toggleAllergy(allergy as AllergyIntolerance)}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                      isSelected
-                        ? "border-amber-600 bg-amber-50 text-amber-900 shadow-sm"
-                        : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50"
-                    }`}
-                  >
-                    <span>{ALLERGY_LABELS[allergy]}</span>
-                    {isSelected && <CheckIcon className="size-3 text-amber-700" />}
-                  </button>
-                );
-              })}
-            </div>
+            <AllergiesPicker value={allergies} onChange={setAllergies} />
           </div>
 
           {/* Health Conditions */}

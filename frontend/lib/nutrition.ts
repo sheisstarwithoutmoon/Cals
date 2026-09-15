@@ -51,75 +51,17 @@ export function percentOf(value: number, target: number | null | undefined) {
   return Math.min(100, Math.round((value / target) * 100));
 }
 
-export function dateRangeForLastDays(days: number) {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  end.setDate(end.getDate() + 1);
-  end.setMilliseconds(-1);
-
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  start.setDate(start.getDate() - (days - 1));
-
-  return { startDate: start.toISOString(), endDate: end.toISOString() };
-}
-
-export interface DailyTotal extends NutritionTotals {
-  date: string;
-  label: string;
-}
-
 /**
  * Formats a Date as a local (not UTC) calendar-day key. `toISOString()`
  * converts through UTC first, which shifts the date backward a day for any
- * timezone ahead of UTC (e.g. IST) — that mismatch silently dropped meals
- * from their correct day bucket below.
+ * timezone ahead of UTC (e.g. IST) — that mismatch silently drops meals
+ * into the wrong day bucket when grouping by this key.
  */
 export function toLocalDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-export function buildDailyTotals(
-  meals: MealEntry[],
-  range: number | { startDate: string; endDate: string }
-): DailyTotal[] {
-  const buckets = new Map<string, MealEntry[]>();
-
-  if (typeof range === "number") {
-    const now = new Date();
-    for (let i = range - 1; i >= 0; i -= 1) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      day.setDate(day.getDate() - i);
-      buckets.set(toLocalDateKey(day), []);
-    }
-  } else if (range.startDate && range.endDate) {
-    const start = new Date(`${range.startDate}T00:00:00`);
-    const end = new Date(`${range.endDate}T00:00:00`);
-    const cur = new Date(start);
-    while (cur <= end) {
-      buckets.set(toLocalDateKey(cur), []);
-      cur.setDate(cur.getDate() + 1);
-    }
-  }
-
-  for (const meal of meals) {
-    const key = toLocalDateKey(new Date(meal.consumedAt));
-    if (buckets.has(key)) {
-      buckets.get(key)!.push(meal);
-    }
-  }
-
-  return Array.from(buckets.entries()).map(([date, dayMeals]) => {
-    const totals = sumMeals(dayMeals);
-    const label = new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-
-    return { date, label, ...totals };
-  });
 }
 
 export function sumMicronutrients(meals: MealEntry[]): Record<string, number> {

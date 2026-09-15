@@ -9,6 +9,7 @@ import {
   CalendarDateRangePicker,
   type CustomDateRange,
 } from "./calendar-date-range-picker";
+import { toLocalDateKey } from "@/lib/nutrition";
 
 export const REPORT_PRESET_RANGES = [7, 14, 30] as const;
 export type ReportPresetRange = (typeof REPORT_PRESET_RANGES)[number];
@@ -25,15 +26,9 @@ interface RangeTabsProps {
 function getPresetDateRange(days: number): CustomDateRange {
   const now = new Date();
   const past = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
-  const toKey = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
   return {
-    startDate: toKey(past),
-    endDate: toKey(now),
+    startDate: toLocalDateKey(past),
+    endDate: toLocalDateKey(now),
   };
 }
 

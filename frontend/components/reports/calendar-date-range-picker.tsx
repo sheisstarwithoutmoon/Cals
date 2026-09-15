@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { cn } from "cn";
 
+import { toLocalDateKey as toDateKey } from "@/lib/nutrition";
+
 export interface CustomDateRange {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
@@ -15,13 +17,6 @@ export interface CalendarDateRangePickerProps {
   onClose?: () => void;
   requireApply?: boolean;
   onApply?: (range: CustomDateRange) => void;
-}
-
-function toDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function formatHumanRange(startStr: string, endStr: string): string {
