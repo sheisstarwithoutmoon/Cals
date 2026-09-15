@@ -7,6 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { MEAL_TYPE_LABELS } from "@/lib/constants";
 import type { MealType } from "@/lib/types/api";
 
 export type MealTypeFilter = MealType | "ALL";
@@ -25,22 +26,25 @@ export const MEAL_TYPE_META: Record<MealTypeFilter, MealTypeMeta> = {
     iconClassName: "bg-emerald-100 text-emerald-700",
   },
   BREAKFAST: {
-    label: "Breakfast",
+    label: MEAL_TYPE_LABELS.BREAKFAST,
     icon: SunIcon,
     iconClassName: "bg-amber-100 text-amber-600",
   },
   LUNCH: {
-    label: "Lunch",
+    label: MEAL_TYPE_LABELS.LUNCH,
     icon: SoupIcon,
     iconClassName: "bg-emerald-100 text-emerald-700",
   },
   SNACK: {
+    // Deliberately plural here, unlike the singular "Snack" in
+    // MEAL_TYPE_LABELS — this label is shown on the meal-type filter tab,
+    // which can hold more than one snack entry.
     label: "Snacks",
     icon: CoffeeIcon,
     iconClassName: "bg-sky-100 text-sky-600",
   },
   DINNER: {
-    label: "Dinner",
+    label: MEAL_TYPE_LABELS.DINNER,
     icon: MoonIcon,
     iconClassName: "bg-violet-100 text-violet-600",
   },

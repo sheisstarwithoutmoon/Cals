@@ -28,6 +28,7 @@ import { ApiError } from "@/lib/api/client";
 import { createMealsBulk, previewPdfImport } from "@/lib/api/meals";
 import { MEAL_TYPE_LABELS } from "@/lib/constants";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
+import { toLocalDateKey } from "@/lib/nutrition";
 import type { MealInput, PdfMealDraft } from "@/lib/types/api";
 
 interface PdfImportModalProps {
@@ -84,10 +85,7 @@ function mealInputToPrefill(meal: MealInput): ExtractedNutrition {
 }
 
 function localDateKey(iso: string) {
-  const date = new Date(iso);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")}`;
+  return toLocalDateKey(new Date(iso));
 }
 
 export function PdfImportModal({

@@ -1,18 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2Icon, CheckIcon } from "lucide-react";
+import { Loader2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { HealthConditionsPicker } from "@/components/goals/health-conditions";
+import { AllergiesPicker, DietPreferencePicker } from "@/components/goals/diet-allergies-picker";
 import { ApiError } from "@/lib/api/client";
 import * as onboardingApi from "@/lib/api/onboarding";
-import {
-  ALLERGY_INTOLERANCES,
-  ALLERGY_LABELS,
-  DIET_PREFERENCES,
-  DIET_PREFERENCE_LABELS,
-} from "@/lib/constants";
 import type {
   AllergyIntolerance,
   BodyAssessment,
@@ -53,12 +48,6 @@ export function StepHealth({
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  function toggleAllergy(allergy: AllergyIntolerance) {
-    setAllergies((prev) =>
-      prev.includes(allergy) ? prev.filter((a) => a !== allergy) : [...prev, allergy]
-    );
-  }
 
   async function handleContinue() {
     if (!conditions.length && !noneConditionsSelected) {
@@ -108,27 +97,7 @@ export function StepHealth({
         <label className="text-xs font-bold text-foreground">
           Dietary Preference
         </label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {DIET_PREFERENCES.map((diet) => {
-            const isSelected = dietPreference === diet;
-            return (
-              <button
-                key={diet}
-                type="button"
-                onClick={() =>
-                  setDietPreference(isSelected ? null : (diet as DietPreference))
-                }
-                className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all ${isSelected
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm"
-                    : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
-                  }`}
-              >
-                <span>{DIET_PREFERENCE_LABELS[diet]}</span>
-                {isSelected && <CheckIcon className="size-3.5 text-emerald-700" />}
-              </button>
-            );
-          })}
-        </div>
+        <DietPreferencePicker value={dietPreference} onChange={setDietPreference} />
       </div>
 
       {/* Allergies & Intolerances */}
@@ -136,25 +105,7 @@ export function StepHealth({
         <label className="text-xs font-bold text-foreground">
           Allergies & Intolerances <span className="font-normal text-muted-foreground">(Optional)</span>
         </label>
-        <div className="flex flex-wrap gap-2">
-          {ALLERGY_INTOLERANCES.map((allergy) => {
-            const isSelected = allergies.includes(allergy as AllergyIntolerance);
-            return (
-              <button
-                key={allergy}
-                type="button"
-                onClick={() => toggleAllergy(allergy as AllergyIntolerance)}
-                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${isSelected
-                    ? "border-amber-600 bg-amber-50 text-amber-900 shadow-sm"
-                    : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50"
-                  }`}
-              >
-                <span>{ALLERGY_LABELS[allergy]}</span>
-                {isSelected && <CheckIcon className="size-3 text-amber-700" />}
-              </button>
-            );
-          })}
-        </div>
+        <AllergiesPicker value={allergies} onChange={setAllergies} />
       </div>
 
       {/* Health Conditions */}

@@ -10,17 +10,11 @@ import {
   type CustomDateRange,
 } from "@/components/reports/calendar-date-range-picker";
 import { formatDate } from "@/lib/format";
+import { toLocalDateKey as toDateKey } from "@/lib/nutrition";
 
 export interface DateRangeValue {
   startDate: string;
   endDate: string;
-}
-
-function toDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function daysAgo(days: number) {
