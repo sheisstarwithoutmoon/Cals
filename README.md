@@ -2,7 +2,7 @@
 
 A personalized nutrition and calorie tracking application that helps users manage their daily food intake, set health goals, and understand their nutritional progress through reports, visualizations, and AI-powered assistance.
 
-## Demo Link
+## Demo Link : https://drive.google.com/file/d/1_tWCRQ-pZiHH3XnQCneZ6OMBqSzDGCpp/view?usp=sharing
 
 ## Features
 
