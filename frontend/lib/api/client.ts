@@ -52,6 +52,10 @@ function sanitizeErrorMessage(message: string, status: number): string {
     return "Unable to connect to the service. Please try again in a moment.";
   }
 
+  if (status === 429) {
+    return "Too many requests. Please wait a few minutes and try again.";
+  }
+
   const lower = message.toLowerCase();
   const hasLeak = [
     "prisma",

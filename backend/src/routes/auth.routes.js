@@ -11,11 +11,12 @@ const {
 } = require("../controllers/auth.controller");
 
 const { requireAuth } = require("../middleware/auth.middleware");
+const { loginLimiter, registerLimiter } = require("../middleware/rate-limit.middleware");
 
 const router = express.Router();
 
-router.post("/register", register);
-router.post("/login", login);
+router.post("/register", registerLimiter, register);
+router.post("/login", loginLimiter, login);
 router.post("/logout", logout);
 router.get("/check-email", checkEmail);
 

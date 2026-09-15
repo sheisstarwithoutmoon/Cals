@@ -14,13 +14,14 @@ const {
 } = require("../controllers/meal.controller");
 
 const { requireAuth } = require("../middleware/auth.middleware");
+const { pdfImportLimiter, bulkMealLimiter } = require("../middleware/rate-limit.middleware");
 
 const router = express.Router();
 
 router.use(requireAuth);
 
-router.post("/import-pdf/preview", previewPdfImport);
-router.post("/bulk", createBulk);
+router.post("/import-pdf/preview", pdfImportLimiter, previewPdfImport);
+router.post("/bulk", bulkMealLimiter, createBulk);
 router.post("/photo", uploadPhoto);
 router.post("/", create);
 router.get("/", list);
