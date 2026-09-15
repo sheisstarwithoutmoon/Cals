@@ -57,6 +57,9 @@ This allows users to quickly record meals without manually entering every nutrit
 ## Conversational AI Assistant
 
 Cals provides a conversational AI assistant that allows users to interact with their nutrition data using natural language.
+flow of the ai assistant:
+<img width="886" height="775" alt="image" src="https://github.com/user-attachments/assets/127a4fce-7154-4390-8794-cb5d86bff6e8" />
+
 
 ## Installation
 
