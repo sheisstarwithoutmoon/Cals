@@ -32,7 +32,7 @@ import { useMealSummary } from "@/hooks/use-meal-summary";
 import { useMeals } from "@/hooks/use-meals";
 import type { ExtractedNutrition } from "@/lib/api/ai";
 import { formatDate, formatNumber } from "@/lib/format";
-import { MAX_PAGES, MEAL_TYPE_SORT_ORDER } from "@/lib/constants";
+import { MEAL_TYPE_SORT_ORDER } from "@/lib/constants";
 import type { MealEntry, MealSummaryFilters } from "@/lib/types/api";
 
 const PAGE_SIZE = 10;
@@ -104,7 +104,13 @@ export default function MealsPage() {
   }
 
   function handlePageChange(nextPage: number) {
-    setPage(Math.min(Math.max(1, nextPage), MAX_PAGES));
+    setPage(Math.max(1, nextPage));
+    const mainEl = document.querySelector("main");
+    if (mainEl) {
+      mainEl.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   function openLogForm(day?: Date) {

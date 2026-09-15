@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { HeartPulseIcon, RulerIcon, TargetIcon } from "lucide-react";
+import { CheckIcon, HeartPulseIcon, RulerIcon, TargetIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
@@ -27,11 +27,22 @@ import { ApiError } from "@/lib/api/client";
 import {
   ACTIVITY_LEVEL_LABELS,
   ACTIVITY_LEVELS,
+  ALLERGY_INTOLERANCES,
+  ALLERGY_LABELS,
+  DIET_PREFERENCE_LABELS,
+  DIET_PREFERENCES,
   GOAL_TYPE_LABELS,
   HEALTH_CONDITION_LABELS,
 } from "@/lib/constants";
 import { formatNumber } from "@/lib/format";
-import type { ActivityLevel, HealthCondition, ProfileUpdate, ProfileView } from "@/lib/types/api";
+import type {
+  ActivityLevel,
+  AllergyIntolerance,
+  DietPreference,
+  HealthCondition,
+  ProfileUpdate,
+  ProfileView,
+} from "@/lib/types/api";
 
 type UpdateProfile = (patch: ProfileUpdate) => Promise<string[]>;
 
@@ -328,14 +339,24 @@ export function BodyCard({ view, onUpdate }: CardProps) {
 export function HealthCard({ view, onUpdate }: CardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [conditions, setConditions] = useState<HealthCondition[]>(view.healthConditions);
+  const [dietPreference, setDietPreference] = useState<DietPreference | null>(view.dietPreference);
+  const [allergies, setAllergies] = useState<AllergyIntolerance[]>(view.allergies);
   const [noneSelected, setNoneSelected] = useState(false);
   const { save, isSaving, error, reset } = useProfileSave(onUpdate, () => setIsOpen(false));
   const [localError, setLocalError] = useState<string | null>(null);
 
   const reviewed = Boolean(view.healthReviewedAt);
 
+  function toggleAllergy(allergy: AllergyIntolerance) {
+    setAllergies((prev) =>
+      prev.includes(allergy) ? prev.filter((a) => a !== allergy) : [...prev, allergy]
+    );
+  }
+
   function open() {
     setConditions(view.healthConditions);
+    setDietPreference(view.dietPreference);
+    setAllergies(view.allergies);
     setNoneSelected(reviewed && view.healthConditions.length === 0);
     setLocalError(null);
     reset();
@@ -344,60 +365,131 @@ export function HealthCard({ view, onUpdate }: CardProps) {
 
   function submit() {
     if (!conditions.length && !noneSelected) {
-      setLocalError('Select any that apply, or "None of these".');
+      setLocalError('Select any health conditions that apply, or "None of these".');
       return;
     }
-    save({ healthConditions: conditions }, "Health details updated");
+    save(
+      { healthConditions: conditions, dietPreference, allergies },
+      "Diet & health details updated"
+    );
   }
 
   return (
     <SectionCard
-      title="Health"
-      description="Used to recommend a safe goal and pace. Not medical advice."
+      title="Diet & Health"
+      description="Used for goal safety recommendations and Cals AI assistant grounding."
       onEdit={open}
       className="lg:col-span-2"
     >
-      {!reviewed ? (
-        <p className="text-sm text-muted-foreground">
-          You haven't added health details yet. Adding them helps us keep your goal safe.
-        </p>
-      ) : view.healthConditions.length === 0 ? (
-        <p className="text-sm text-foreground">No health conditions reported.</p>
-      ) : (
-        <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm text-foreground sm:grid-cols-2">
-          {view.healthConditions.map((condition) => (
-            <li key={condition} className="flex items-center gap-2">
-              <span className="size-1.5 shrink-0 rounded-full bg-primary" />
-              {HEALTH_CONDITION_LABELS[condition]}
-            </li>
-          ))}
-        </ul>
-      )}
+      <DetailRows
+        rows={[
+          {
+            label: "Diet preference",
+            value: view.dietPreference
+              ? DIET_PREFERENCE_LABELS[view.dietPreference]
+              : "Not specified",
+          },
+          {
+            label: "Allergies & Intolerances",
+            value:
+              view.allergies && view.allergies.length
+                ? view.allergies.map((a) => ALLERGY_LABELS[a]).join(", ")
+                : "None reported",
+          },
+          {
+            label: "Health conditions",
+            value:
+              view.healthConditions && view.healthConditions.length
+                ? view.healthConditions.map((c) => HEALTH_CONDITION_LABELS[c]).join(", ")
+                : "None reported",
+          },
+        ]}
+      />
+
       {view.assessment && <HealthNotes notes={view.assessment.notes} />}
 
       <EditDialog
         open={isOpen}
         onOpenChange={setIsOpen}
         icon={HeartPulseIcon}
-        title="Edit health details"
-        description="If a change makes your current goal unsafe, we'll adjust it and tell you."
+        title="Edit diet & health details"
+        description="Update your dietary preferences, food allergies, and health conditions."
         onSubmit={submit}
         isSaving={isSaving}
         error={localError ?? error}
         size="lg"
       >
-        <HealthConditionsPicker
-          value={conditions}
-          onChange={(next) => {
-            setConditions(next);
-            setLocalError(null);
-          }}
-          noneSelected={noneSelected}
-          onNoneSelectedChange={(next) => {
-            setNoneSelected(next);
-            setLocalError(null);
-          }}
-        />
+        <div className="space-y-6">
+          {/* Diet Preference */}
+          <div className="space-y-2">
+            <Label className="text-xs font-bold text-foreground">Dietary Preference</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {DIET_PREFERENCES.map((diet) => {
+                const isSelected = dietPreference === diet;
+                return (
+                  <button
+                    key={diet}
+                    type="button"
+                    onClick={() => setDietPreference(isSelected ? null : (diet as DietPreference))}
+                    className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all ${
+                      isSelected
+                        ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm"
+                        : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
+                    }`}
+                  >
+                    <span>{DIET_PREFERENCE_LABELS[diet]}</span>
+                    {isSelected && <CheckIcon className="size-3.5 text-emerald-700" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Allergies */}
+          <div className="space-y-2">
+            <Label className="text-xs font-bold text-foreground">
+              Allergies & Intolerances <span className="font-normal text-muted-foreground">(Optional)</span>
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              {ALLERGY_INTOLERANCES.map((allergy) => {
+                const isSelected = allergies.includes(allergy as AllergyIntolerance);
+                return (
+                  <button
+                    key={allergy}
+                    type="button"
+                    onClick={() => toggleAllergy(allergy as AllergyIntolerance)}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                      isSelected
+                        ? "border-amber-600 bg-amber-50 text-amber-900 shadow-sm"
+                        : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+                    }`}
+                  >
+                    <span>{ALLERGY_LABELS[allergy]}</span>
+                    {isSelected && <CheckIcon className="size-3 text-amber-700" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Health Conditions */}
+          <div className="space-y-2">
+            <Label className="text-xs font-bold text-foreground">Health Conditions</Label>
+            <HealthConditionsPicker
+              gender={view.profile.gender}
+              value={conditions}
+              onChange={(next) => {
+                setConditions(next);
+                setLocalError(null);
+              }}
+              noneSelected={noneSelected}
+              onNoneSelectedChange={(next) => {
+                setNoneSelected(next);
+                setLocalError(null);
+              }}
+            />
+          </div>
+        </div>
       </EditDialog>
     </SectionCard>
   );

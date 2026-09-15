@@ -2,7 +2,7 @@ import { AlertTriangleIcon, InfoIcon } from "lucide-react";
 import { cn } from "cn";
 
 import { HEALTH_CONDITION_LABELS, HEALTH_CONDITIONS } from "@/lib/constants";
-import type { BodyAssessment, HealthCondition } from "@/lib/types/api";
+import type { BodyAssessment, Gender, HealthCondition } from "@/lib/types/api";
 
 interface HealthConditionsPickerProps {
   value: HealthCondition[];
@@ -10,6 +10,7 @@ interface HealthConditionsPickerProps {
   /** Distinguishes "None of these" from not answered, for onboarding. */
   noneSelected: boolean;
   onNoneSelectedChange: (noneSelected: boolean) => void;
+  gender?: Gender | string | null;
 }
 
 /**
@@ -21,6 +22,7 @@ export function HealthConditionsPicker({
   onChange,
   noneSelected,
   onNoneSelectedChange,
+  gender,
 }: HealthConditionsPickerProps) {
   function toggle(condition: HealthCondition) {
     onNoneSelectedChange(false);
@@ -30,6 +32,13 @@ export function HealthConditionsPicker({
         : [...value, condition]
     );
   }
+
+  const availableConditions = HEALTH_CONDITIONS.filter((condition) => {
+    if (gender === "MALE") {
+      return condition !== "PREGNANT_OR_BREASTFEEDING";
+    }
+    return true;
+  });
 
   const optionClass = (isChecked: boolean) =>
     cn(
@@ -41,7 +50,7 @@ export function HealthConditionsPicker({
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {HEALTH_CONDITIONS.map((condition) => {
+      {availableConditions.map((condition) => {
         const isChecked = value.includes(condition);
         return (
           <label key={condition} className={optionClass(isChecked)}>

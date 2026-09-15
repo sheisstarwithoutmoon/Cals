@@ -1,31 +1,68 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2Icon } from "lucide-react";
+import { Loader2Icon, CheckIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { HealthConditionsPicker } from "@/components/goals/health-conditions";
 import { ApiError } from "@/lib/api/client";
 import * as onboardingApi from "@/lib/api/onboarding";
-import type { BodyAssessment, HealthCondition } from "@/lib/types/api";
+import {
+  ALLERGY_INTOLERANCES,
+  ALLERGY_LABELS,
+  DIET_PREFERENCES,
+  DIET_PREFERENCE_LABELS,
+} from "@/lib/constants";
+import type {
+  AllergyIntolerance,
+  BodyAssessment,
+  DietPreference,
+  Gender,
+  HealthCondition,
+} from "@/lib/types/api";
 
 interface StepHealthProps {
-  initial: HealthCondition[];
-  /** True if the user already answered this step before. */
+  initialConditions: HealthCondition[];
+  initialDiet: DietPreference | null;
+  initialAllergies: AllergyIntolerance[];
   initiallyReviewed: boolean;
+  gender?: Gender | string | null;
   onBack: () => void;
-  onSaved: (result: { healthConditions: HealthCondition[]; assessment: BodyAssessment | null }) => void;
+  onSaved: (result: {
+    healthConditions: HealthCondition[];
+    dietPreference: DietPreference | null;
+    allergies: AllergyIntolerance[];
+    assessment: BodyAssessment | null;
+  }) => void;
 }
 
-export function StepHealth({ initial, initiallyReviewed, onBack, onSaved }: StepHealthProps) {
-  const [conditions, setConditions] = useState<HealthCondition[]>(initial);
-  const [noneSelected, setNoneSelected] = useState(initiallyReviewed && initial.length === 0);
+export function StepHealth({
+  initialConditions,
+  initialDiet,
+  initialAllergies,
+  initiallyReviewed,
+  gender,
+  onBack,
+  onSaved,
+}: StepHealthProps) {
+  const [conditions, setConditions] = useState<HealthCondition[]>(initialConditions);
+  const [dietPreference, setDietPreference] = useState<DietPreference | null>(initialDiet);
+  const [allergies, setAllergies] = useState<AllergyIntolerance[]>(initialAllergies);
+  const [noneConditionsSelected, setNoneConditionsSelected] = useState(
+    initiallyReviewed && initialConditions.length === 0
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  function toggleAllergy(allergy: AllergyIntolerance) {
+    setAllergies((prev) =>
+      prev.includes(allergy) ? prev.filter((a) => a !== allergy) : [...prev, allergy]
+    );
+  }
+
   async function handleContinue() {
-    if (!conditions.length && !noneSelected) {
-      setFormError('Select any that apply, or "None of these"');
+    if (!conditions.length && !noneConditionsSelected) {
+      setFormError('Select any health conditions that apply, or "None of these"');
       return;
     }
 
@@ -33,39 +70,112 @@ export function StepHealth({ initial, initiallyReviewed, onBack, onSaved }: Step
     setIsSubmitting(true);
 
     try {
-      const result = await onboardingApi.saveHealthConditions(conditions);
-      onSaved({ healthConditions: result.healthConditions, assessment: result.assessment });
+      const result = await onboardingApi.saveHealthConditions({
+        healthConditions: conditions,
+        dietPreference,
+        allergies,
+      });
+      onSaved({
+        healthConditions: result.healthConditions,
+        dietPreference: result.dietPreference,
+        allergies: result.allergies,
+        assessment: result.assessment,
+      });
     } catch (error) {
-      setFormError(error instanceof ApiError ? error.message : "Something went wrong. Please try again.");
+      setFormError(
+        error instanceof ApiError
+          ? error.message
+          : "Something went wrong. Please try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h2 className="font-heading text-xl font-bold text-foreground">
-          Any health conditions?
+          Dietary preference & Health
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Select any that apply. We use this to recommend a safe goal and pace.
-          It stays private and you can change it later in Goals.
+          Help us personalize your goal recommendations and ground Cals AI assistant.
         </p>
       </div>
 
-      <HealthConditionsPicker
-        value={conditions}
-        onChange={(next) => {
-          setConditions(next);
-          setFormError(null);
-        }}
-        noneSelected={noneSelected}
-        onNoneSelectedChange={(next) => {
-          setNoneSelected(next);
-          setFormError(null);
-        }}
-      />
+      {/* Diet Preference */}
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-foreground">
+          Dietary Preference
+        </label>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {DIET_PREFERENCES.map((diet) => {
+            const isSelected = dietPreference === diet;
+            return (
+              <button
+                key={diet}
+                type="button"
+                onClick={() =>
+                  setDietPreference(isSelected ? null : (diet as DietPreference))
+                }
+                className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all ${isSelected
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm"
+                    : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
+                  }`}
+              >
+                <span>{DIET_PREFERENCE_LABELS[diet]}</span>
+                {isSelected && <CheckIcon className="size-3.5 text-emerald-700" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Allergies & Intolerances */}
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-foreground">
+          Allergies & Intolerances <span className="font-normal text-muted-foreground">(Optional)</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {ALLERGY_INTOLERANCES.map((allergy) => {
+            const isSelected = allergies.includes(allergy as AllergyIntolerance);
+            return (
+              <button
+                key={allergy}
+                type="button"
+                onClick={() => toggleAllergy(allergy as AllergyIntolerance)}
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${isSelected
+                    ? "border-amber-600 bg-amber-50 text-amber-900 shadow-sm"
+                    : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+                  }`}
+              >
+                <span>{ALLERGY_LABELS[allergy]}</span>
+                {isSelected && <CheckIcon className="size-3 text-amber-700" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Health Conditions */}
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-foreground">
+          Health Conditions
+        </label>
+        <HealthConditionsPicker
+          gender={gender}
+          value={conditions}
+          onChange={(next) => {
+            setConditions(next);
+            setFormError(null);
+          }}
+          noneSelected={noneConditionsSelected}
+          onNoneSelectedChange={(next) => {
+            setNoneConditionsSelected(next);
+            setFormError(null);
+          }}
+        />
+      </div>
 
       <p className="text-xs text-muted-foreground">
         Cals gives general guidance, not medical advice. If you have a medical

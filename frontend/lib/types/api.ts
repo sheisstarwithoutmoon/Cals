@@ -44,6 +44,23 @@ export type HealthCondition =
   | "PREGNANT_OR_BREASTFEEDING"
   | "EATING_DISORDER";
 
+export type DietPreference =
+  | "VEGETARIAN"
+  | "VEGAN"
+  | "EGGETARIAN"
+  | "NON_VEGETARIAN"
+  | "KETO"
+  | "OTHER";
+
+export type AllergyIntolerance =
+  | "LACTOSE"
+  | "GLUTEN"
+  | "NUTS"
+  | "SOY"
+  | "EGGS"
+  | "SHELLFISH"
+  | "SESAME";
+
 export type BmiCategory = "UNDERWEIGHT" | "HEALTHY" | "OVERWEIGHT" | "OBESE";
 
 /** BMI, recommended goal and health-based limits, computed by the backend. */
@@ -66,6 +83,8 @@ export interface OnboardingStatus {
   profile: OnboardingProfile;
   healthConditions: HealthCondition[];
   healthReviewed: boolean;
+  dietPreference: DietPreference | null;
+  allergies: AllergyIntolerance[];
   goalType: GoalType | null;
   targetWeight: number | null;
   weeklyWeightChangeKg: number | null;
@@ -111,6 +130,8 @@ export interface ProfileView {
   profile: OnboardingProfile;
   healthConditions: HealthCondition[];
   healthReviewedAt: string | null;
+  dietPreference: DietPreference | null;
+  allergies: AllergyIntolerance[];
   goalType: GoalType | null;
   targetWeight: number | null;
   weeklyWeightChangeKg: number | null;
@@ -127,6 +148,8 @@ export interface ProfileUpdate {
   currentWeight?: number;
   activityLevel?: ActivityLevel;
   healthConditions?: HealthCondition[];
+  dietPreference?: DietPreference | null;
+  allergies?: AllergyIntolerance[];
   goalType?: GoalType;
   targetWeight?: number | null;
   weeklyWeightChangeKg?: number | null;

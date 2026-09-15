@@ -1,9 +1,11 @@
 import { apiFetch } from "@/lib/api/client";
 import type {
+  AllergyIntolerance,
   BodyAssessment,
+  DietPreference,
   GoalPlanInput,
-  HealthCondition,
   GoalType,
+  HealthCondition,
   OnboardingProfileInput,
   OnboardingStatus,
   OnboardingTargets,
@@ -21,12 +23,18 @@ export function saveProfile(payload: OnboardingProfileInput) {
   );
 }
 
-export function saveHealthConditions(healthConditions: HealthCondition[]) {
+export function saveHealthConditions(payload: {
+  healthConditions: HealthCondition[];
+  dietPreference?: DietPreference | null;
+  allergies?: AllergyIntolerance[];
+}) {
   return apiFetch<{
     success: true;
     healthConditions: HealthCondition[];
+    dietPreference: DietPreference | null;
+    allergies: AllergyIntolerance[];
     assessment: BodyAssessment | null;
-  }>("/onboarding/health", { method: "PUT", body: { healthConditions } });
+  }>("/onboarding/health", { method: "PUT", body: payload });
 }
 
 export function saveGoalType(payload: GoalPlanInput) {

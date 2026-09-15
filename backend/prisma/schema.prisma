@@ -8,29 +8,33 @@ datasource db {
 }
 
 model User {
-  id                   String         @id @default(cuid())
+  id                   String          @id @default(cuid())
   name                 String
-  email                String         @unique
+  email                String          @unique
   passwordHash         String?
-  googleId             String?        @unique
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  googleId             String?         @unique
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
   age                  Int?
-  gender               Gender?
   heightCm             Float?
   currentWeight        Float?
   activityLevel        ActivityLevel?
   goalType             GoalType?
+  onboardingCompleted  Boolean         @default(false)
+  gender               Gender?
   /// Weight the user wants to reach (kg), asked during onboarding for LOSE/GAIN.
   targetWeight         Float?
   /// Planned weight change per week (kg) for LOSE/GAIN; sets the calorie adjustment.
   weeklyWeightChangeKg Float?
   /// Health condition keys the user reported (see body-assessment.service.js).
-  healthConditions     String[]       @default([])
+  healthConditions     String[]        @default([])
   /// When the user answered the health question; null means not asked yet,
   /// which an empty `healthConditions` alone can't express.
   healthReviewedAt     DateTime?
-  onboardingCompleted  Boolean        @default(false)
+  /// Allergies and food intolerances (e.g. LACTOSE, GLUTEN, NUTS, SOY, EGGS, SHELLFISH, SESAME).
+  allergies            String[]        @default([])
+  /// Dietary preference (e.g. VEGETARIAN, VEGAN, EGGETARIAN, NON_VEGETARIAN, KETO, OTHER).
+  dietPreference       DietPreference?
   chatMessages         ChatMessage[]
   goal                 Goal?
   mealEntries          MealEntry[]
@@ -70,8 +74,8 @@ model MealEntry {
   updatedAt      DateTime        @updatedAt
   attachmentUrl  String?
   attachmentType AttachmentType?
-  items          MealItem[]
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items          MealItem[]
 
   @@index([userId, consumedAt])
   @@index([userId, mealType])
@@ -155,4 +159,13 @@ enum GoalType {
 enum ChatRole {
   USER
   ASSISTANT
+}
+
+enum DietPreference {
+  VEGETARIAN
+  VEGAN
+  EGGETARIAN
+  NON_VEGETARIAN
+  KETO
+  OTHER
 }

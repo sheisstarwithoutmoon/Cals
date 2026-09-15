@@ -1,7 +1,6 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { MAX_PAGES } from "@/lib/constants";
 import type { Pagination } from "@/lib/types/api";
 
 interface MealPaginationProps {
@@ -13,7 +12,7 @@ export function MealPagination({
   pagination,
   onPageChange,
 }: MealPaginationProps) {
-  const totalPages = Math.min(pagination.totalPages, MAX_PAGES);
+  const totalPages = pagination.totalPages;
   if (totalPages <= 1) return null;
 
   const currentPage = Math.min(Math.max(1, pagination.page), totalPages);

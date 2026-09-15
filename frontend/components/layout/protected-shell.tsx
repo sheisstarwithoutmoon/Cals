@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2Icon, SparklesIcon } from "lucide-react";
 
 import { AiChatDrawer } from "@/components/chat/ai-chat-drawer";
@@ -13,6 +13,8 @@ import { useAuth } from "@/contexts/auth-context";
 export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const mainRef = useRef<HTMLElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   useEffect(() => {
@@ -24,6 +26,13 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
       router.replace("/onboarding");
     }
   }, [isLoading, user, router]);
+
+  // Reset scroll position to top whenever navigating between screens (e.g. Meals -> Goals)
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [pathname]);
 
   if (isLoading || !user || !user.onboardingCompleted) {
     return (
@@ -37,7 +46,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
     <div className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-transparent">
       <TopNav />
       <MobileHeader />
-      <main className="min-h-0 flex-1 overflow-y-auto">
+      <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:py-8 lg:pb-8">
           {children}
         </div>
