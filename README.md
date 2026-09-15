@@ -58,22 +58,6 @@ This allows users to quickly record meals without manually entering every nutrit
 
 Cals provides a conversational AI assistant that allows users to interact with their nutrition data using natural language.
 
-Examples:
-
-```text
-"Log my breakfast: 2 eggs and toast."
-
-"Add a banana to my breakfast."
-
-"What did I eat today?"
-
-"How much protein did I have this week?"
-
-"Update my calorie goal to 2000."
-
-"Give me my nutrition report."
-````
-
 ## Installation
 
 1. Clone the repository:
