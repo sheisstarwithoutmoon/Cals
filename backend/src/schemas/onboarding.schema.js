@@ -112,6 +112,34 @@ const targetsSchema = z.object({
     .max(500, "Fat must be at most 500g"),
 });
 
+const dietPreferenceSchema = z
+  .enum([
+    "VEGETARIAN",
+    "VEGAN",
+    "EGGETARIAN",
+    "NON_VEGETARIAN",
+    "KETO",
+    "OTHER",
+  ])
+  .nullable()
+  .optional();
+
+const ALLERGY_KEYS = [
+  "LACTOSE",
+  "GLUTEN",
+  "NUTS",
+  "SOY",
+  "EGGS",
+  "SHELLFISH",
+  "SESAME",
+];
+
+const allergiesSchema = z
+  .array(z.enum(ALLERGY_KEYS))
+  .max(ALLERGY_KEYS.length)
+  .transform((items) => [...new Set(items)])
+  .optional();
+
 const healthConditionsSchema = z
   .array(z.enum(HEALTH_CONDITION_KEYS))
   .max(HEALTH_CONDITION_KEYS.length)
@@ -119,6 +147,8 @@ const healthConditionsSchema = z
 
 const healthInputSchema = z.object({
   healthConditions: healthConditionsSchema,
+  dietPreference: dietPreferenceSchema,
+  allergies: allergiesSchema,
 });
 
 /**
@@ -133,6 +163,8 @@ const profileUpdateSchema = z
     currentWeight: profileSchema.shape.currentWeight,
     activityLevel: activityLevelSchema,
     healthConditions: healthConditionsSchema,
+    dietPreference: dietPreferenceSchema,
+    allergies: allergiesSchema,
     goalType: goalTypeSchema,
     targetWeight: z
       .number()
@@ -158,9 +190,13 @@ module.exports = {
   healthInputSchema,
   profileUpdateSchema,
   WEEKLY_CHANGE_LIMITS,
+  ALLERGY_KEYS,
   activityLevelSchema,
   goalTypeSchema,
+  dietPreferenceSchema,
+  allergiesSchema,
   profileSchema,
   goalTypeInputSchema,
   targetsSchema,
 };
+

@@ -215,7 +215,7 @@ export function RangeNutritionSummary({
             >
               <AverageRing
                 calories={summary.averages.calories}
-                target={mealType === "ALL" ? goal?.dailyCalories ?? null : null}
+                target={goal?.dailyCalories ?? null}
               />
 
               <ul className="min-w-36 flex-1 space-y-3">

@@ -146,8 +146,6 @@ function validateDateOrder(data, ctx) {
   }
 }
 
-const MAX_PAGES = 10;
-
 const mealQuerySchema = z.object({
   ...mealFilterFields,
 
@@ -155,7 +153,6 @@ const mealQuerySchema = z.object({
     .number()
     .int()
     .positive("Page must be at least 1")
-    .max(MAX_PAGES, `Page number cannot exceed ${MAX_PAGES}`)
     .default(1),
 
   limit: z.coerce
@@ -195,7 +192,6 @@ const mealPhotoSchema = z.object({
 });
 
 module.exports = {
-  MAX_PAGES,
   mealSchema,
   mealItemSchema,
   mealPhotoSchema,

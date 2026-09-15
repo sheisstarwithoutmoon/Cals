@@ -190,11 +190,9 @@ function buildMealWhere(userId, filters, { includeMealType = true } = {}) {
   return where;
 }
 
-const MAX_PAGES = 10;
-
 async function getMeals(userId, filters) {
   const { page = 1, limit = 10 } = filters;
-  const safePage = Math.min(Math.max(1, page), MAX_PAGES);
+  const safePage = Math.max(1, page);
 
   const where = buildMealWhere(userId, filters);
 
@@ -216,8 +214,7 @@ async function getMeals(userId, filters) {
     }),
   ]);
 
-  const rawTotalPages = Math.ceil(total / limit);
-  const totalPages = Math.min(rawTotalPages, MAX_PAGES);
+  const totalPages = Math.ceil(total / limit) || 1;
 
   return {
     meals,
@@ -605,7 +602,6 @@ async function deleteMeal(userId, mealId) {
 }
 
 module.exports = {
-  MAX_PAGES,
   buildMealData,
   MEAL_INCLUDE,
   createMeal,

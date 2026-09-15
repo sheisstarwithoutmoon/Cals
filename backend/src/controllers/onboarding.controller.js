@@ -43,8 +43,8 @@ async function updateProfile(req, res, next) {
 
 async function updateHealth(req, res, next) {
   try {
-    const { healthConditions } = healthInputSchema.parse(req.body);
-    const result = await saveHealthConditions(req.user.id, healthConditions);
+    const data = healthInputSchema.parse(req.body);
+    const result = await saveHealthConditions(req.user.id, data);
 
     res.json({
       success: true,

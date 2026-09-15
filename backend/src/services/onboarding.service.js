@@ -43,6 +43,8 @@ async function getOnboardingStatus(userId) {
     profile: view.profile,
     healthConditions: view.healthConditions,
     healthReviewed: Boolean(user.healthReviewedAt),
+    dietPreference: view.dietPreference,
+    allergies: view.allergies,
     goalType: view.goalType,
     targetWeight: view.targetWeight,
     weeklyWeightChangeKg: view.weeklyWeightChangeKg,
@@ -67,18 +69,29 @@ async function saveProfile(userId, data) {
   });
 }
 
-/** Saves the health conditions (possibly none) and returns the new assessment. */
-async function saveHealthConditions(userId, healthConditions) {
+/** Saves health conditions, diet preference, and allergies and returns the new assessment. */
+async function saveHealthConditions(userId, payload) {
   const user = await requireUser(userId);
   requirePreviousSteps(user, 2);
 
+  const healthConditions = payload.healthConditions || [];
+  const dietPreference = payload.dietPreference ?? null;
+  const allergies = payload.allergies || [];
+
   const updated = await prisma.user.update({
     where: { id: userId },
-    data: { healthConditions, healthReviewedAt: new Date() },
+    data: {
+      healthConditions,
+      dietPreference,
+      allergies,
+      healthReviewedAt: new Date(),
+    },
   });
 
   return {
     healthConditions: updated.healthConditions,
+    dietPreference: updated.dietPreference,
+    allergies: updated.allergies,
     assessment: assessBody(updated),
   };
 }

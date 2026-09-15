@@ -1,5 +1,7 @@
 const { getMeals, toLocalDateKey, localDayRange } = require("../meal.service");
 const { getGoalByUserId } = require("../goal.service");
+const { requireUser } = require("../profile.service");
+const { HEALTH_CONDITIONS } = require("../body-assessment.service");
 const chatService = require("../chat.service");
 const { loadPrompt } = require("../../utils/load-prompt");
 const { isGeminiConfigured, generateChatResponse } = require("./gemini.client");
@@ -19,8 +21,8 @@ const MAX_TOOL_ROUNDS = 3;
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /**
- * Loads what a chat turn is grounded in: the goal, today's and the last 7
- * days' meals, and recent chat turns, plus today's totals derived from them.
+ * Loads what a chat turn is grounded in: the user profile, goal, today's and
+ * the last 7 days' meals, and recent chat turns, plus today's totals.
  */
 async function loadUserContext(userId, tzOffset) {
   // "Today" is the user's calendar day (from the client's tz offset), not the
@@ -31,11 +33,8 @@ async function loadUserContext(userId, tzOffset) {
   const { start: startOfToday, end: endOfToday } = localDayRange(todayDate, tzOffset);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  // Capped at 100/200 rather than paginated through in full — a personal
-  // tracker's single-day and 7-day windows stay well under that in
-  // practice, so this trades strict completeness for one round trip per
-  // chat turn. Revisit with real pagination if that assumption ever breaks.
-  const [goal, todayMealsResult, weekMealsResult, priorHistory] = await Promise.all([
+  const [user, goal, todayMealsResult, weekMealsResult, priorHistory] = await Promise.all([
+    requireUser(userId),
     getGoalByUserId(userId),
     getMeals(userId, { page: 1, limit: 100, startDate: startOfToday, endDate: endOfToday }),
     getMeals(userId, { page: 1, limit: 200, startDate: sevenDaysAgo, endDate: endOfToday }),
@@ -50,6 +49,7 @@ async function loadUserContext(userId, tzOffset) {
     tzOffset,
     todayDate,
     todayWeekday: WEEKDAYS[new Date(`${todayDate}T00:00:00Z`).getUTCDay()],
+    user,
     goal,
     priorHistory,
     weekMealsResult,
@@ -63,11 +63,22 @@ async function loadUserContext(userId, tzOffset) {
 }
 
 function buildSystemInstruction(context) {
-  const { goal } = context;
+  const { goal, user } = context;
+
+  const dietPreference = user?.dietPreference || "Not specified";
+  const allergies =
+    user?.allergies && user.allergies.length ? user.allergies.join(", ") : "None reported";
+  const healthConditions =
+    user?.healthConditions && user.healthConditions.length
+      ? user.healthConditions.map((key) => HEALTH_CONDITIONS[key] || key).join(", ")
+      : "None reported";
 
   return assistantConversationPrompt
     .replace("{{todayDate}}", context.todayDate)
     .replace("{{todayWeekday}}", context.todayWeekday)
+    .replace("{{dietPreference}}", dietPreference)
+    .replace("{{allergies}}", allergies)
+    .replace("{{healthConditions}}", healthConditions)
     .replace("{{dailyCalorieGoal}}", String(context.dailyCalorieGoal))
     .replace("{{dailyProteinGoal}}", String(goal?.dailyProtein ?? "not set"))
     .replace("{{dailyCarbsGoal}}", String(goal?.dailyCarbs ?? "not set"))

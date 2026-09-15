@@ -15,7 +15,9 @@ import { StepTargets } from "@/components/onboarding/step-targets";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import type {
+  AllergyIntolerance,
   BodyAssessment,
+  DietPreference,
   GoalType,
   HealthCondition,
   OnboardingProfileInput,
@@ -40,8 +42,15 @@ export function OnboardingWizard() {
   const [goalSubStep, setGoalSubStep] = useState<1 | 2>(1);
   const [activeChangeGoal, setActiveChangeGoal] = useState<"LOSE" | "GAIN">("GAIN");
   const [profile, setProfile] = useState<Partial<OnboardingProfileInput>>({});
-  const [health, setHealth] = useState<{ conditions: HealthCondition[]; reviewed: boolean }>({
+  const [health, setHealth] = useState<{
+    conditions: HealthCondition[];
+    dietPreference: DietPreference | null;
+    allergies: AllergyIntolerance[];
+    reviewed: boolean;
+  }>({
     conditions: [],
+    dietPreference: null,
+    allergies: [],
     reviewed: false,
   });
   const [assessment, setAssessment] = useState<BodyAssessment | null>(null);
@@ -55,7 +64,12 @@ export function OnboardingWizard() {
     if (!status) return;
 
     setStep((status.nextStep ?? 4) as Step);
-    setHealth({ conditions: status.healthConditions, reviewed: status.healthReviewed });
+    setHealth({
+      conditions: status.healthConditions,
+      dietPreference: status.dietPreference,
+      allergies: status.allergies,
+      reviewed: status.healthReviewed,
+    });
     setAssessment(status.assessment);
     setGoal({
       goalType: status.goalType,
@@ -113,12 +127,19 @@ export function OnboardingWizard() {
 
           {step === 2 && (
             <StepHealth
-              initial={health.conditions}
+              initialConditions={health.conditions}
+              initialDiet={health.dietPreference}
+              initialAllergies={health.allergies}
               initiallyReviewed={health.reviewed}
+              gender={profile.gender}
               onBack={() => setStep(1)}
               onSaved={(saved) => {
-                // The assessment is recomputed here, so a height or weight
-                setHealth({ conditions: saved.healthConditions, reviewed: true });
+                setHealth({
+                  conditions: saved.healthConditions,
+                  dietPreference: saved.dietPreference,
+                  allergies: saved.allergies,
+                  reviewed: true,
+                });
                 setAssessment(saved.assessment);
                 setStep(3);
               }}

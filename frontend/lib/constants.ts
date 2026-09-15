@@ -7,8 +7,6 @@ import type {
   MealType,
 } from "@/lib/types/api";
 
-export const MAX_PAGES = 10;
-
 export const MEAL_TYPES: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 
 export const MEAL_TYPE_LABELS: Record<MealType, string> = {
@@ -124,3 +122,40 @@ export const NUTRIENT_DAILY_VALUES: Record<string, number> = {
   "Sodium (mg)": 2300,
 };
 
+export const DIET_PREFERENCES = [
+  "VEGETARIAN",
+  "VEGAN",
+  "EGGETARIAN",
+  "NON_VEGETARIAN",
+  "KETO",
+  "OTHER",
+] as const;
+
+export const DIET_PREFERENCE_LABELS: Record<string, string> = {
+  VEGETARIAN: "Vegetarian",
+  VEGAN: "Vegan",
+  EGGETARIAN: "Eggetarian",
+  NON_VEGETARIAN: "Non-Vegetarian",
+  KETO: "Keto",
+  OTHER: "Other / Flexible",
+};
+
+export const ALLERGY_INTOLERANCES = [
+  "LACTOSE",
+  "GLUTEN",
+  "NUTS",
+  "SOY",
+  "EGGS",
+  "SHELLFISH",
+  "SESAME",
+] as const;
+
+export const ALLERGY_LABELS: Record<string, string> = {
+  LACTOSE: "Dairy / Lactose",
+  GLUTEN: "Gluten",
+  NUTS: "Nuts & Peanuts",
+  SOY: "Soy",
+  EGGS: "Eggs",
+  SHELLFISH: "Shellfish",
+  SESAME: "Sesame",
+};

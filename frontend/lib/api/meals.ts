@@ -1,5 +1,4 @@
 import { apiFetch } from "@/lib/api/client";
-import { MAX_PAGES } from "@/lib/constants";
 import type {
   MealEntry,
   MealInput,
@@ -14,7 +13,7 @@ import type {
 export function listMeals(filters: MealListFilters = {}) {
   const page =
     filters.page != null
-      ? Math.min(Math.max(1, filters.page), MAX_PAGES)
+      ? Math.max(1, filters.page)
       : undefined;
 
   return apiFetch<{ success: true } & MealListResult>("/meals", {
